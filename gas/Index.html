@@ -1,0 +1,1554 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <base target="_top">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+      :root {
+        --gray-900: #1a1a1a;
+        --gray-700: #4d4d4d;
+        --gray-200: #cccccc;
+        --gray-100: #eeeeee;
+        --gray-50: #f2f2f2;
+        --blue-900: #0017c1;
+        --blue-50: #d9e6ff;
+        --green-900: #115a36;
+        --orange-900: #ac3e00;
+        --orange-100: #ffdfca;
+        --red-100: #ffdada;
+        --red-900: #8b0000;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--gray-50);
+        color: var(--gray-900);
+        font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+        letter-spacing: 0;
+      }
+
+      main {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 24px;
+      }
+
+      header {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: flex-start;
+        margin-bottom: 18px;
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+      }
+
+      h2 {
+        margin: 0 0 14px;
+        font-size: 18px;
+      }
+
+      p {
+        margin: 0;
+        color: var(--gray-700);
+        line-height: 1.6;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-bottom: 18px;
+      }
+
+      button {
+        border: 1px solid var(--gray-200);
+        border-radius: 6px;
+        background: #fff;
+        cursor: pointer;
+        font: inherit;
+        padding: 10px 12px;
+      }
+
+      button.primary {
+        background: var(--blue-900);
+        border-color: var(--blue-900);
+        color: #fff;
+        font-weight: 700;
+      }
+
+      button.is-loading {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        justify-content: center;
+      }
+
+      .button-spinner {
+        display: none;
+        width: 14px;
+        height: 14px;
+        border: 2px solid rgba(255, 255, 255, 0.45);
+        border-top-color: #fff;
+        border-radius: 999px;
+        animation: spin 0.8s linear infinite;
+      }
+
+      button.is-loading .button-spinner {
+        display: inline-block;
+      }
+
+      button[aria-selected="true"] {
+        background: var(--blue-50);
+        border-color: var(--blue-900);
+        color: var(--blue-900);
+        font-weight: 700;
+      }
+
+      .view {
+        display: none;
+      }
+
+      .view.active {
+        display: grid;
+        gap: 16px;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: minmax(280px, 560px);
+        justify-content: center;
+        gap: 16px;
+      }
+
+      .metrics {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .panel,
+      .metric {
+        background: #fff;
+        border: 1px solid var(--gray-200);
+        border-radius: 8px;
+        padding: 16px;
+      }
+
+      .metric span {
+        display: block;
+        color: var(--gray-700);
+        font-size: 13px;
+        margin-bottom: 8px;
+      }
+
+      .metric strong {
+        display: block;
+        font-size: 30px;
+      }
+
+      .metric small {
+        display: block;
+        margin-top: 8px;
+      }
+
+      label {
+        display: block;
+        color: var(--gray-700);
+        font-size: 13px;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+
+      input,
+      select,
+      textarea {
+        width: 100%;
+        border: 1px solid var(--gray-200);
+        border-radius: 6px;
+        padding: 10px;
+        font: inherit;
+        margin-bottom: 12px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        border-bottom: 1px solid var(--gray-100);
+        padding: 10px 8px;
+        text-align: left;
+      }
+
+      th {
+        color: var(--gray-700);
+        font-size: 13px;
+      }
+
+      .badge {
+        display: inline-flex;
+        min-height: 24px;
+        padding: 2px 8px;
+        align-items: center;
+        border-radius: 999px;
+        font-size: 12px;
+        font-weight: 700;
+      }
+
+      .badge.ok {
+        background: #dff4e8;
+        color: var(--green-900);
+      }
+
+      .badge.warn {
+        background: var(--orange-100);
+        color: var(--orange-900);
+      }
+
+      .badge.alert {
+        background: var(--red-100);
+        color: var(--red-900);
+      }
+
+      .badge.neutral {
+        background: var(--gray-100);
+        color: var(--gray-700);
+      }
+
+      .bar {
+        display: grid;
+        grid-template-columns: 150px 1fr 36px;
+        gap: 10px;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .track {
+        height: 18px;
+        background: var(--gray-100);
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      .fill {
+        height: 100%;
+        background: var(--blue-900);
+      }
+
+      .muted {
+        color: var(--gray-700);
+      }
+
+      .chart-legend {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        margin-bottom: 8px;
+        font-size: 12px;
+        color: var(--gray-700);
+      }
+
+      .legend-item {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .legend-swatch {
+        display: inline-block;
+        width: 18px;
+        height: 3px;
+        border-radius: 2px;
+      }
+
+      .legend-swatch--solid {
+        background: #0017c1;
+      }
+
+      .legend-swatch--dash {
+        background-image: repeating-linear-gradient(90deg, #e53935 0 5px, transparent 5px 9px);
+      }
+
+      .trait-list {
+        display: grid;
+        gap: 10px;
+        margin-top: 16px;
+        border-top: 1px solid var(--gray-100);
+        padding-top: 14px;
+      }
+
+      .trait-list h3 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .trait-item {
+        display: grid;
+        grid-template-columns: minmax(180px, 260px) 1fr;
+        gap: 12px;
+        border: 1px solid var(--gray-100);
+        border-radius: 6px;
+        padding: 12px;
+        background: #fff;
+      }
+
+      .trait-title {
+        display: grid;
+        align-content: start;
+        gap: 8px;
+        font-weight: 700;
+      }
+
+      .trait-meta {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        font-size: 12px;
+      }
+
+      .trait-copy {
+        color: var(--gray-700);
+        line-height: 1.7;
+      }
+
+      .form-actions {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      .status-message {
+        min-height: 24px;
+        margin: 0;
+        font-size: 13px;
+        font-weight: 700;
+      }
+
+      .status-message.ok {
+        color: var(--green-900);
+      }
+
+      .status-message.warn {
+        color: var(--orange-900);
+      }
+
+      .status-message.alert {
+        color: var(--red-900);
+      }
+
+      .dashboard-state {
+        min-height: 22px;
+        margin-top: 8px;
+      }
+
+      .loading-box {
+        min-height: 96px;
+        display: grid;
+        place-items: center;
+        border: 1px dashed var(--gray-200);
+        border-radius: 6px;
+        background: #fafafa;
+        color: var(--gray-700);
+        font-weight: 700;
+      }
+
+      button:disabled {
+        cursor: progress;
+        opacity: 0.7;
+      }
+
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      @media (max-width: 840px) {
+        .grid,
+        .metrics {
+          grid-template-columns: 1fr;
+        }
+
+        .trait-item {
+          grid-template-columns: 1fr;
+        }
+
+      }
+      .cell-grid {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 12px;
+      }
+
+      .cell-grid th,
+      .cell-grid td {
+        border: 1px solid var(--gray-200);
+        padding: 5px 6px;
+        text-align: center;
+      }
+
+      .cell-grid th {
+        background: var(--gray-100);
+        font-size: 12px;
+      }
+
+      .cell-grid td.rowlabel {
+        font-weight: 700;
+        background: var(--gray-50);
+        white-space: nowrap;
+      }
+
+      .cell-grid tr.block-head td {
+        background: var(--blue-50);
+        font-weight: 700;
+        text-align: left;
+      }
+
+      .cell-grid select {
+        padding: 4px 4px;
+        min-width: 56px;
+      }
+
+      .cell-grid select.flagged {
+        background: var(--orange-100);
+        border-color: var(--orange-900);
+      }
+
+      .cell-grid select.changed {
+        background: var(--blue-50);
+        border-color: var(--blue-900);
+        font-weight: 700;
+      }
+
+      .cells-toolbar {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .candidate-search {
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) minmax(150px, 220px);
+        gap: 12px;
+        align-items: end;
+        margin-bottom: 12px;
+      }
+
+      .candidate-search input,
+      .candidate-search select {
+        margin-bottom: 0;
+      }
+
+      .candidate-search-status {
+        margin-bottom: 12px;
+        font-size: 13px;
+      }
+
+      @media (max-width: 840px) {
+        .candidate-search {
+          grid-template-columns: 1fr;
+        }
+      }
+
+      .source-link {
+        color: var(--blue-900);
+        font-weight: 700;
+        text-decoration: none;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <header>
+        <div>
+          <h1>CHEQ採点支援</h1>
+          <p>候補者登録、確認キュー、結果ダッシュボードをスプレッドシートと連携します。</p>
+        </div>
+      </header>
+
+      <nav class="tabs" aria-label="画面切り替え">
+        <button type="button" data-view="upload" aria-selected="true">アップロード</button>
+        <button type="button" data-view="review" aria-selected="false">採点確認</button>
+        <button type="button" data-view="cells" aria-selected="false">セル修正</button>
+        <button type="button" data-view="dashboard" aria-selected="false">ダッシュボード</button>
+      </nav>
+
+      <section class="view active" id="upload">
+        <div class="grid">
+          <form class="panel" id="candidate-form">
+            <h2>候補者登録</h2>
+            <label for="name">氏名</label>
+            <input id="name" name="name" required>
+            <label for="testDate">検査日</label>
+            <input id="testDate" name="testDate" type="date" required>
+            <label for="role">応募職種</label>
+            <input id="role" name="role">
+            <label for="file">ファイル</label>
+            <input id="file" name="file" type="file" accept=".jpg,.jpeg,.png,.heic,.heif,.pdf,image/jpeg,image/png,image/heic,image/heif,application/pdf">
+            <label for="memo">メモ</label>
+            <textarea id="memo" name="memo" rows="3"></textarea>
+            <div class="form-actions">
+              <button class="primary" type="submit" id="register-button">登録する</button>
+              <p id="register-status" class="status-message" role="status" aria-live="polite"></p>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section class="view" id="review">
+        <div class="metrics">
+          <div class="metric"><span>確認待ち</span><strong id="review-count">-</strong></div>
+          <div class="metric"><span>候補者数</span><strong id="candidate-count">-</strong></div>
+          <div class="metric"><span>状態</span><strong id="review-status">読込前</strong></div>
+        </div>
+        <div class="panel">
+          <h2>確認キュー</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>候補者ID</th>
+                <th>セル</th>
+                <th>検出</th>
+                <th>理由</th>
+                <th>信頼度</th>
+                <th>画像</th>
+              </tr>
+            </thead>
+            <tbody id="review-body">
+              <tr><td colspan="6" class="muted">まだ読み込んでいません</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="cells">
+        <div class="panel">
+          <h2>読み取りセルの目視修正</h2>
+          <p>OCRが読み取った各設問の値(0〜3)を原本と見比べて修正できます。橙色＝要確認セル、青色＝変更済み。<strong>橙のセルはOCR値が正しければそのまま、違えば直して「確認して保存」を押すと確認済み（オレンジ解除）になります。</strong></p>
+          <div class="candidate-search" style="margin-top:12px;">
+            <div>
+              <label for="cells-candidate-search">名前で検索</label>
+              <input id="cells-candidate-search" class="candidate-search-input" type="search" autocomplete="off" placeholder="氏名を入力">
+            </div>
+            <div>
+              <label for="cells-decision-filter">合否で絞り込み</label>
+              <select id="cells-decision-filter" class="candidate-decision-filter">
+                <option value="">すべて</option>
+                <option value="PASSED">合格</option>
+                <option value="FAILED">不合格</option>
+                <option value="NONE">未登録</option>
+              </select>
+            </div>
+          </div>
+          <p id="cells-candidate-filter-status" class="candidate-search-status muted"></p>
+          <div class="cells-toolbar" style="margin-top:12px;">
+            <select id="cells-select" aria-label="候補者選択"></select>
+            <button type="button" class="primary" id="cells-load-button" onclick="loadCells()">
+              <span class="button-spinner" aria-hidden="true"></span>
+              <span class="button-label">読み込む</span>
+            </button>
+            <a id="cells-source" class="source-link" href="#" target="_blank" rel="noopener" style="display:none;">原本を開く ↗</a>
+            <button type="button" id="cells-save-button" onclick="saveCells()" disabled>
+              <span class="button-spinner" aria-hidden="true"></span>
+              <span class="button-label">確認して保存</span>
+            </button>
+            <p id="cells-status" class="status-message" role="status" aria-live="polite"></p>
+          </div>
+          <div id="cells-grid" class="muted">候補者を選んで「読み込む」を押してください</div>
+        </div>
+      </section>
+
+      <section class="view" id="dashboard">
+        <div class="panel">
+          <h2>候補者選択</h2>
+          <div class="candidate-search">
+            <div>
+              <label for="dashboard-candidate-search">名前で検索</label>
+              <input id="dashboard-candidate-search" class="candidate-search-input" type="search" autocomplete="off" placeholder="氏名を入力">
+            </div>
+            <div>
+              <label for="dashboard-decision-filter">合否で絞り込み</label>
+              <select id="dashboard-decision-filter" class="candidate-decision-filter">
+                <option value="">すべて</option>
+                <option value="PASSED">合格</option>
+                <option value="FAILED">不合格</option>
+                <option value="NONE">未登録</option>
+              </select>
+            </div>
+          </div>
+          <p id="dashboard-candidate-filter-status" class="candidate-search-status muted"></p>
+          <select id="candidate-select" aria-describedby="dashboard-status"></select>
+          <div class="form-actions">
+            <button type="button" class="primary" id="dashboard-button" onclick="loadDashboard()">
+              <span class="button-spinner" aria-hidden="true"></span>
+              <span class="button-label">結果を表示</span>
+            </button>
+            <button type="button" id="finalize-button" onclick="finalizeCandidate()">
+              <span class="button-spinner" aria-hidden="true"></span>
+              <span class="button-label">採点確定</span>
+            </button>
+            <p id="dashboard-status" class="status-message dashboard-state" role="status" aria-live="polite">
+              候補者一覧を読み込んでいます
+            </p>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>採用合否登録</h2>
+          <p id="decision-current" class="muted">現在: 未登録</p>
+          <label for="decision-select" style="margin-top:12px;">合否</label>
+          <select id="decision-select">
+            <option value="">未登録</option>
+            <option value="PASSED">合格</option>
+            <option value="FAILED">不合格</option>
+          </select>
+          <label for="employee-number">職員番号（合格時のみ）</label>
+          <input id="employee-number" autocomplete="off" disabled>
+          <div class="form-actions">
+            <button type="button" class="primary" id="decision-button" onclick="saveHiringDecision()">
+              <span class="button-spinner" aria-hidden="true"></span>
+              <span class="button-label">登録する</span>
+            </button>
+            <p id="decision-status" class="status-message" role="status" aria-live="polite"></p>
+          </div>
+        </div>
+        <div class="metrics">
+          <div class="metric"><span>総合判定</span><strong id="rank">-</strong></div>
+          <div class="metric"><span>応答態度</span><strong id="attitude">-</strong><small id="attitude-minus" class="muted">-</small></div>
+          <div class="metric"><span>マイナスポイント</span><strong id="minus-points">-</strong><small id="minus-breakdown" class="muted">-</small></div>
+          <div class="metric"><span>要確認</span><strong id="unresolved">-</strong></div>
+        </div>
+        <div class="panel">
+          <h2>カテゴリ別プロフィール</h2>
+          <div id="profile-area" class="muted">候補者を選択してください</div>
+        </div>
+        <div class="panel">
+          <h2>注意領域・確認事項</h2>
+          <div id="attention-area" class="muted">-</div>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const state = {
+        candidates: [],
+        dataLoading: false,
+        dashboardLoading: false,
+        finalizeLoading: false,
+        decisionSaving: false,
+        cellsLoading: false,
+        cellsSaving: false,
+        cellsCandidateId: '',
+        candidateFilters: {
+          name: '',
+          decision: '',
+        },
+      };
+
+      const CELL_LETTERS = 'ABCDEFGHIJ';
+
+      function getAccessCode() {
+        return '';
+      }
+
+      document.querySelectorAll('[data-view]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const view = button.dataset.view;
+          document.querySelectorAll('[data-view]').forEach((item) => {
+            item.setAttribute('aria-selected', String(item === button));
+          });
+          document.querySelectorAll('.view').forEach((section) => {
+            section.classList.toggle('active', section.id === view);
+          });
+          if (view === 'review') refreshData();
+          if (view === 'cells') refreshData();
+          if (view === 'dashboard') refreshData();
+        });
+      });
+
+      document.getElementById('candidate-form').addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const form = event.currentTarget;
+        const registerButton = document.getElementById('register-button');
+        setRegisterStatus('登録中です...', 'warn');
+        registerButton.disabled = true;
+        const fileInput = document.getElementById('file');
+        let file = null;
+        try {
+          file = fileInput.files[0] ? await readFile(fileInput.files[0]) : null;
+        } catch (error) {
+          registerButton.disabled = false;
+          setRegisterStatus('ファイルを読み込めませんでした。', 'alert');
+          showError(error);
+          return;
+        }
+        const payload = {
+          name: form.name.value,
+          testDate: form.testDate.value,
+          role: form.role.value,
+          memo: form.memo.value,
+          file,
+        };
+        google.script.run
+          .withSuccessHandler((result) => {
+            form.reset();
+            refreshData();
+            registerButton.disabled = false;
+            const candidateId = result && result.candidateId ? ` ID: ${result.candidateId}` : '';
+            setRegisterStatus(`登録が完了しました。${candidateId}`, 'ok');
+          })
+          .withFailureHandler((error) => {
+            registerButton.disabled = false;
+            setRegisterStatus(errorMessage(error, '登録に失敗しました'), 'alert');
+            showError(error);
+          })
+          .registerCandidate(payload, getAccessCode());
+      });
+
+      document.getElementById('decision-select').addEventListener('change', () => {
+        updateDecisionEmployeeInput();
+      });
+
+      document.getElementById('candidate-select').addEventListener('change', () => {
+        renderDecisionFromSelectedCandidate();
+        setDecisionStatus('', '');
+      });
+
+      document.querySelectorAll('.candidate-search-input').forEach((input) => {
+        input.addEventListener('input', () => {
+          state.candidateFilters.name = input.value;
+          syncCandidateFilterControls(input);
+          renderCandidates();
+        });
+      });
+
+      document.querySelectorAll('.candidate-decision-filter').forEach((select) => {
+        select.addEventListener('change', () => {
+          state.candidateFilters.decision = select.value;
+          syncCandidateFilterControls(select);
+          renderCandidates();
+        });
+      });
+
+      function refreshData() {
+        state.dataLoading = true;
+        document.getElementById('review-status').textContent = '読込中';
+        setDashboardStatus('候補者一覧を更新しています...', 'warn');
+        updateDashboardControls();
+        google.script.run
+          .withSuccessHandler((data) => {
+            state.candidates = data.candidates || [];
+            renderReview(data.reviewQueue || []);
+            state.dataLoading = false;
+            renderCandidates();
+            setDashboardStatus(
+              state.candidates.length > 0
+                ? `候補者一覧を読み込みました（${state.candidates.length}件）`
+                : '候補者がまだ登録されていません',
+              state.candidates.length > 0 ? 'ok' : 'warn'
+            );
+            updateDashboardControls();
+          })
+          .withFailureHandler((error) => {
+            state.dataLoading = false;
+            setDashboardStatus(errorMessage(error, '候補者一覧の読み込みに失敗しました'), 'alert');
+            updateDashboardControls();
+            showError(error);
+          })
+          .getDemoData(getAccessCode());
+      }
+
+      function renderReview(items) {
+        document.getElementById('review-count').textContent = items.length;
+        document.getElementById('candidate-count').textContent = state.candidates.length;
+        document.getElementById('review-status').textContent = '読込済';
+        const body = document.getElementById('review-body');
+        if (items.length === 0) {
+          body.innerHTML = '<tr><td colspan="6"><span class="badge ok">確認待ちはありません</span></td></tr>';
+          return;
+        }
+        body.innerHTML = items.map((item) => {
+          const confidence = item.confidence ? `${Math.round(Number(item.confidence) * 100)}%` : '-';
+          const detected = item.detected === '' || item.detected === undefined ? '-' : item.detected;
+          const badgeType = item.status === 'NOTICE' ? 'alert' : 'warn';
+          const image = safeLink(item.image_link, '確認');
+          return `<tr>
+            <td>${escapeHtml(item.candidate_id)}</td>
+            <td>${escapeHtml(item.cell_key || '-')}</td>
+            <td>${escapeHtml(detected)}</td>
+            <td><span class="badge ${badgeType}">${escapeHtml(item.reason)}</span></td>
+            <td>${confidence}</td>
+            <td>${image}</td>
+          </tr>`;
+        }).join('');
+      }
+
+      function renderCandidates() {
+        const filteredCandidates = filteredCandidateList();
+        const optionsHtml = filteredCandidates.length === 0
+          ? `<option value="">${state.candidates.length === 0 ? '候補者がありません' : '条件に合う候補者がありません'}</option>`
+          : filteredCandidates.map((candidate) => {
+              const hiringSuffix = candidate.hiring_decision === 'PASSED'
+                ? ' / 合格'
+                : (candidate.hiring_decision === 'FAILED' ? ' / 不合格' : '');
+              return `<option value="${escapeHtml(candidate.candidate_id)}">${escapeHtml(candidate.name)} / ${escapeHtml(candidate.test_date)} / ${escapeHtml(candidate.status)}${escapeHtml(hiringSuffix)}</option>`;
+            }).join('');
+
+        [document.getElementById('candidate-select'), document.getElementById('cells-select')].forEach((select) => {
+          if (!select) return;
+          const selectedValue = select.value;
+          select.innerHTML = optionsHtml;
+          if (selectedValue && filteredCandidates.some((candidate) => String(candidate.candidate_id) === selectedValue)) {
+            select.value = selectedValue;
+          }
+        });
+        renderCandidateFilterStatus(filteredCandidates.length);
+        renderDecisionFromSelectedCandidate();
+        updateDashboardControls();
+        updateCellsControls();
+      }
+
+      function filteredCandidateList() {
+        const nameQuery = normalizeSearchText(state.candidateFilters.name);
+        const decisionFilter = state.candidateFilters.decision;
+        return state.candidates.filter((candidate) => {
+          const name = normalizeSearchText(candidate.name);
+          const decision = normalizeDecision(candidate.hiring_decision);
+          const matchesName = !nameQuery || name.indexOf(nameQuery) !== -1;
+          const matchesDecision = !decisionFilter
+            || (decisionFilter === 'NONE' ? decision === '' : decision === decisionFilter);
+          return matchesName && matchesDecision;
+        });
+      }
+
+      function normalizeSearchText(value) {
+        return String(value || '').trim().toLowerCase();
+      }
+
+      function normalizeDecision(value) {
+        return value === 'PASSED' || value === 'FAILED' ? value : '';
+      }
+
+      function syncCandidateFilterControls(changedControl) {
+        document.querySelectorAll('.candidate-search-input').forEach((input) => {
+          if (input !== changedControl) input.value = state.candidateFilters.name;
+        });
+        document.querySelectorAll('.candidate-decision-filter').forEach((select) => {
+          if (select !== changedControl) select.value = state.candidateFilters.decision;
+        });
+      }
+
+      function renderCandidateFilterStatus(filteredCount) {
+        const total = state.candidates.length;
+        const hasFilter = Boolean(
+          normalizeSearchText(state.candidateFilters.name) || state.candidateFilters.decision
+        );
+        const message = hasFilter
+          ? `検索結果: ${filteredCount}件 / 全${total}件`
+          : `全${total}件`;
+        ['dashboard-candidate-filter-status', 'cells-candidate-filter-status'].forEach((id) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = message;
+        });
+      }
+
+      function loadDashboard() {
+        const candidateId = document.getElementById('candidate-select').value;
+        if (!candidateId) {
+          setDashboardStatus('候補者を選択してください', 'warn');
+          return;
+        }
+        state.dashboardLoading = true;
+        setDashboardStatus('結果を取得しています...', 'warn');
+        updateDashboardControls();
+        setDashboardLoadingPlaceholder();
+        google.script.run
+          .withSuccessHandler((data) => {
+            state.dashboardLoading = false;
+            renderDashboard(data);
+            setDashboardStatus('結果を表示しました', 'ok');
+            updateDashboardControls();
+          })
+          .withFailureHandler((error) => {
+            state.dashboardLoading = false;
+            setDashboardStatus(errorMessage(error, '結果の取得に失敗しました'), 'alert');
+            resetDashboardPlaceholder();
+            updateDashboardControls();
+            showError(error);
+          })
+          .getDashboardData(candidateId, getAccessCode());
+      }
+
+      // 採点確定: 読み取り済みセルから項目合計・段階・総合判定を計算してResultsへ保存する。
+      // 要確認セルが残っている候補者はサーバ側で弾かれ、その旨をステータスへ表示する。
+      function finalizeCandidate() {
+        const candidateId = document.getElementById('candidate-select').value;
+        if (!candidateId) {
+          setDashboardStatus('候補者を選択してください', 'warn');
+          return;
+        }
+        state.finalizeLoading = true;
+        setDashboardStatus('採点を確定しています...', 'warn');
+        updateDashboardControls();
+        setDashboardLoadingPlaceholder();
+        google.script.run
+          .withSuccessHandler((data) => {
+            state.finalizeLoading = false;
+            renderDashboard(data);
+            setDashboardStatus('採点を確定しました', 'ok');
+            updateDashboardControls();
+          })
+          .withFailureHandler((error) => {
+            state.finalizeLoading = false;
+            setDashboardStatus(errorMessage(error, '採点確定に失敗しました'), 'alert');
+            resetDashboardPlaceholder();
+            updateDashboardControls();
+            showError(error);
+          })
+          .calculateCandidateResult(candidateId, getAccessCode());
+      }
+
+      function saveHiringDecision() {
+        const candidateId = document.getElementById('candidate-select').value;
+        if (!candidateId) {
+          setDecisionStatus('候補者を選択してください', 'warn');
+          return;
+        }
+        const decision = document.getElementById('decision-select').value;
+        const employeeNumber = document.getElementById('employee-number').value;
+        state.decisionSaving = true;
+        setDecisionStatus('登録しています...', 'warn');
+        updateDashboardControls();
+        google.script.run
+          .withSuccessHandler((result) => {
+            state.decisionSaving = false;
+            const candidate = state.candidates.find((item) => String(item.candidate_id) === String(candidateId));
+            if (candidate) {
+              candidate.hiring_decision = result.decision || '';
+              candidate.employee_number = result.employeeNumber || '';
+            }
+            renderDecisionControls(result.decision || '', result.employeeNumber || '');
+            setDecisionStatus('合否を登録しました', 'ok');
+            refreshData();
+            updateDashboardControls();
+          })
+          .withFailureHandler((error) => {
+            state.decisionSaving = false;
+            setDecisionStatus(errorMessage(error, '合否の登録に失敗しました'), 'alert');
+            updateDashboardControls();
+            showError(error);
+          })
+          .registerHiringDecision(candidateId, decision, employeeNumber, getAccessCode());
+      }
+
+      // ===== セル修正(目視) =====
+      function loadCells() {
+        const candidateId = document.getElementById('cells-select').value;
+        if (!candidateId) {
+          setCellsStatus('候補者を選択してください', 'warn');
+          return;
+        }
+        state.cellsLoading = true;
+        setCellsStatus('読み込んでいます...', 'warn');
+        updateCellsControls();
+        const grid = document.getElementById('cells-grid');
+        grid.className = '';
+        grid.innerHTML = '<div class="loading-box">読み取り値を読み込んでいます...</div>';
+        google.script.run
+          .withSuccessHandler((data) => {
+            state.cellsLoading = false;
+            renderCellsGrid(data);
+            updateCellsControls();
+          })
+          .withFailureHandler((error) => {
+            state.cellsLoading = false;
+            setCellsStatus(errorMessage(error, '読み込みに失敗しました'), 'alert');
+            grid.className = 'muted';
+            grid.textContent = '読み込めませんでした';
+            updateCellsControls();
+            showError(error);
+          })
+          .getCandidateCells(candidateId, getAccessCode());
+      }
+
+      function renderCellsGrid(data) {
+        state.cellsCandidateId = data.candidateId || '';
+        const cells = data.cells || {};
+
+        const source = document.getElementById('cells-source');
+        if (data.sourceUrl) {
+          source.href = data.sourceUrl;
+          source.style.display = '';
+        } else {
+          source.style.display = 'none';
+        }
+
+        const blockTitles = ['上ブロック (○1)', '下ブロック (○2)'];
+        let html = '<table class="cell-grid"><thead><tr><th>行</th><th>設問1</th><th>設問2</th><th>設問3</th><th>設問4</th></tr></thead><tbody>';
+        for (let block = 0; block < 2; block += 1) {
+          html += `<tr class="block-head"><td colspan="5">${blockTitles[block]}</td></tr>`;
+          for (let li = 0; li < CELL_LETTERS.length; li += 1) {
+            const rowLabel = `${CELL_LETTERS[li]}${block + 1}`;
+            html += `<tr><td class="rowlabel">${rowLabel}</td>`;
+            for (let pos = 1; pos <= 4; pos += 1) {
+              const index = block * 40 + li * 4 + (pos - 1);
+              const key = `s${String(index + 1).padStart(2, '0')}`;
+              const cell = cells[key] || { value: '', flagged: false, reason: '' };
+              const current = cell.value === '' || cell.value === undefined || cell.value === null ? '' : String(cell.value);
+              const cls = cell.flagged ? ' flagged' : '';
+              const title = cell.reason ? ` title="${escapeHtml(cell.reason)}"` : '';
+              let opts = '<option value="">空欄</option>';
+              ['0', '1', '2', '3'].forEach((v) => {
+                opts += `<option value="${v}"${v === current ? ' selected' : ''}>${v}</option>`;
+              });
+              html += `<td><select class="cell-input${cls}" data-cell="${key}" data-orig="${current}" onchange="onCellChange(this)"${title}>${opts}</select></td>`;
+            }
+            html += '</tr>';
+          }
+        }
+        html += '</tbody></table>';
+
+        const grid = document.getElementById('cells-grid');
+        grid.className = '';
+        grid.innerHTML = html;
+
+        const flaggedCount = Object.keys(cells).filter((k) => cells[k].flagged).length;
+        setCellsStatus(
+          flaggedCount > 0
+            ? `読み込みました。要確認 ${flaggedCount} 件(橙)を確認し「確認して保存」を押してください（OCR値が正しければそのままでOK）`
+            : '読み込みました。必要に応じて値を修正してください',
+          flaggedCount > 0 ? 'warn' : 'ok'
+        );
+      }
+
+      function onCellChange(select) {
+        const changed = select.value !== '' && select.value !== select.dataset.orig;
+        select.classList.toggle('changed', changed);
+        updateCellsControls();
+      }
+
+      function saveCells() {
+        const candidateId = state.cellsCandidateId;
+        if (!candidateId) return;
+        // 値を変更したセル + 要確認(橙)で値が入っているセル(=OCR値を確認) を送る
+        const updates = {};
+        document.querySelectorAll('#cells-grid select.cell-input').forEach((select) => {
+          if (select.value === '') return;
+          const isChanged = select.value !== select.dataset.orig;
+          const isFlagged = select.classList.contains('flagged');
+          if (isChanged || isFlagged) {
+            updates[select.dataset.cell] = Number(select.value);
+          }
+        });
+        if (Object.keys(updates).length === 0) {
+          setCellsStatus('確認・変更するセルがありません（橙セルは値を選んでから保存してください）', 'warn');
+          return;
+        }
+        state.cellsSaving = true;
+        setCellsStatus('保存しています...', 'warn');
+        updateCellsControls();
+        google.script.run
+          .withSuccessHandler((result) => {
+            state.cellsSaving = false;
+            const remaining = result && result.unresolvedCount ? Number(result.unresolvedCount) : 0;
+            Object.keys(updates).forEach((key) => {
+              const select = document.querySelector(`#cells-grid select[data-cell="${key}"]`);
+              if (select) {
+                select.dataset.orig = String(updates[key]);
+                select.classList.remove('changed', 'flagged');
+                select.removeAttribute('title');
+              }
+            });
+            setCellsStatus(`保存しました（残り要確認: ${remaining}件）。ダッシュボードで「採点確定」してください`, 'ok');
+            refreshData();
+            updateCellsControls();
+          })
+          .withFailureHandler((error) => {
+            state.cellsSaving = false;
+            setCellsStatus(errorMessage(error, '保存に失敗しました'), 'alert');
+            updateCellsControls();
+            showError(error);
+          })
+          .overrideCellValues(candidateId, updates, getAccessCode());
+      }
+
+      function setCellsStatus(message, type) {
+        const status = document.getElementById('cells-status');
+        status.textContent = message || '';
+        status.className = `status-message ${type || ''}`.trim();
+      }
+
+      function updateCellsControls() {
+        const select = document.getElementById('cells-select');
+        const loadBtn = document.getElementById('cells-load-button');
+        const saveBtn = document.getElementById('cells-save-button');
+        const busy = state.cellsLoading || state.cellsSaving;
+        const noCandidate = state.candidates.length === 0 || !select.value;
+        select.disabled = busy || noCandidate;
+        loadBtn.disabled = busy || noCandidate;
+        loadBtn.classList.toggle('is-loading', state.cellsLoading);
+        loadBtn.querySelector('.button-label').textContent = state.cellsLoading ? '読込中...' : '読み込む';
+        // 変更済み or 値の入った橙(要確認)セルがあれば保存可能
+        const selects = document.querySelectorAll('#cells-grid select.cell-input');
+        const hasSavable = Array.prototype.some.call(selects, (s) =>
+          s.value !== '' && (s.value !== s.dataset.orig || s.classList.contains('flagged'))
+        );
+        saveBtn.disabled = busy || noCandidate || !state.cellsCandidateId || !hasSavable;
+        saveBtn.classList.toggle('is-loading', state.cellsSaving);
+        saveBtn.querySelector('.button-label').textContent = state.cellsSaving ? '保存中...' : '確認して保存';
+      }
+
+      function renderDashboard(data) {
+        const result = data.result || {};
+        const summary = data.rawCellSummary || {};
+        const candidate = data.candidate || {};
+        renderDecisionControls(candidate.hiring_decision || '', candidate.employee_number || '');
+        document.getElementById('rank').textContent = result.total_rank || '-';
+
+        const attitudeStage = result.response_attitude_stage;
+        document.getElementById('attitude').textContent =
+          attitudeStage === '' || attitudeStage === undefined || attitudeStage === null
+            ? '-'
+            : String(attitudeStage);
+        renderMinusMetric(result, Boolean(data.result));
+        const attitudeMinus = numericOrNull(result.attitude_minus_points);
+        const profileMinus = attitudeMinus === null
+          ? Number(result.minus_points || 0)
+          : attitudeMinus;
+        const attitudeMinusDisplay = !data.result
+          ? '-'
+          : (profileMinus < 0 ? `減点 ${profileMinus}` : '減点なし');
+        document.getElementById('attitude-minus').textContent = attitudeMinusDisplay;
+        document.getElementById('unresolved').textContent =
+          summary.unresolved_count === '' || summary.unresolved_count === undefined
+            ? '0'
+            : String(summary.unresolved_count);
+
+        const stages = result.item_stages || {};
+        const totals = result.item_totals || {};
+        const labels = sortDashboardLabels(
+          Object.keys(stages).filter((label) => label !== '応答態度')
+        );
+        const area = document.getElementById('profile-area');
+        if (!data.result || labels.length === 0) {
+          area.className = 'muted';
+          area.textContent = '採点結果はまだ確定していません';
+        } else {
+          area.className = '';
+          area.innerHTML = renderProfileChart(labels, stages, profileMinus)
+            + renderTraitList(labels, stages, totals);
+        }
+        renderAttention(data.result, candidate, labels, stages, result.cross_check || []);
+      }
+
+      function renderMinusMetric(result, hasResult) {
+        const minusEl = document.getElementById('minus-points');
+        const breakdownEl = document.getElementById('minus-breakdown');
+        if (!hasResult) {
+          minusEl.textContent = '-';
+          breakdownEl.textContent = '-';
+          return;
+        }
+
+        if (isBlankValue(result.job_requirement_minus_points)) {
+          minusEl.textContent = '-';
+          breakdownEl.textContent = '再確定で表示されます';
+          return;
+        }
+
+        const jobReqMinus = Number(result.job_requirement_minus_points || 0);
+        minusEl.textContent = jobReqMinus === 0 ? 'なし' : String(jobReqMinus);
+        const jobReqLowItems = Array.isArray(result.job_requirement_low_items)
+          ? result.job_requirement_low_items
+          : [];
+        breakdownEl.textContent = jobReqLowItems.length > 0
+          ? jobReqLowItems.map((item) => item.label).join('、')
+          : '-';
+      }
+
+      function isBlankValue(value) {
+        return value === '' || value === undefined || value === null;
+      }
+
+      function numericOrNull(value) {
+        if (isBlankValue(value)) return null;
+        const number = Number(value);
+        return Number.isFinite(number) ? number : null;
+      }
+
+      // 段階得点(1〜5)のSVG折れ線。縦軸0〜5固定、2以下は注意色。
+      // minus<0(応答態度4=-1/5=-2)のときは「マイナス適用後」を赤い破線で重ねる。
+      function renderProfileChart(labels, stages, minus) {
+        const W = 680;
+        const left = 30; const right = 660; const top = 20; const bottom = 195;
+        const n = labels.length;
+        const minusNum = Number(minus);
+        const adjust = minusNum < 0;
+        const xAt = (i) => (n === 1 ? (left + right) / 2 : left + ((right - left) * i) / (n - 1));
+        const yAt = (stage) => bottom - ((bottom - top) * stage) / 5;
+        // 有効段階(1〜5)のみ。適用後は minus 分シフトし下限0でクランプ
+        const valueAt = (label, applyMinus) => {
+          const stage = Number(stages[label]);
+          if (!(stage >= 1 && stage <= 5)) return null;
+          return applyMinus ? Math.max(0, stage + minusNum) : stage;
+        };
+        // 欠損(未確定)は結ばない: 連続区間ごとにポリラインを引く
+        const buildLine = (applyMinus, stroke, dash) => {
+          let segment = [];
+          const segments = [];
+          labels.forEach((label, i) => {
+            const v = valueAt(label, applyMinus);
+            if (v !== null) {
+              segment.push(`${xAt(i)},${yAt(v)}`);
+            } else if (segment.length > 0) {
+              segments.push(segment);
+              segment = [];
+            }
+          });
+          if (segment.length > 0) segments.push(segment);
+          return segments
+            .filter((points) => points.length > 1)
+            .map((points) => `<polyline points="${points.join(' ')}" fill="none" stroke="${stroke}" stroke-width="2"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`)
+            .join('');
+        };
+
+        let svg = `<svg viewBox="0 0 ${W} 245" role="img" aria-label="カテゴリ別段階の折れ線グラフ" style="width:100%;height:auto;">`;
+        for (let s = 1; s <= 5; s += 1) {
+          svg += `<line x1="${left}" y1="${yAt(s)}" x2="${right}" y2="${yAt(s)}" stroke="#eeeeee"/>`;
+          svg += `<text x="${left - 8}" y="${yAt(s) + 4}" font-size="11" fill="#4d4d4d" text-anchor="end">${s}</text>`;
+        }
+
+        // 赤(マイナス適用後)を先に描き、現状の青を上に重ねる
+        if (adjust) svg += buildLine(true, '#e53935', '5 4');
+        svg += buildLine(false, '#0017c1', '');
+
+        // マイナス適用後の点(赤)
+        if (adjust) {
+          labels.forEach((label, i) => {
+            const v = valueAt(label, true);
+            if (v === null) return;
+            const stage = Number(stages[label]);
+            svg += `<circle cx="${xAt(i)}" cy="${yAt(v)}" r="4" fill="#e53935">` +
+              `<title>${escapeHtml(label)}: ${stage} → ${v}（応答態度${minusNum}）</title></circle>`;
+          });
+        }
+
+        // 現状の点(青)＋数値ラベル
+        labels.forEach((label, i) => {
+          const stage = Number(stages[label]);
+          const x = xAt(i);
+          if (stage >= 1 && stage <= 5) {
+            const caution = stage <= 2;
+            svg += `<circle cx="${x}" cy="${yAt(stage)}" r="5" fill="${caution ? '#8b0000' : '#0017c1'}">` +
+              `<title>${escapeHtml(label)}: ${stage}</title></circle>`;
+            svg += `<text x="${x}" y="${yAt(stage) - 10}" font-size="12" font-weight="700" fill="${caution ? '#8b0000' : '#1a1a1a'}" text-anchor="middle">${stage}</text>`;
+          } else {
+            svg += `<text x="${x}" y="${yAt(2.5)}" font-size="12" fill="#4d4d4d" text-anchor="middle">-</text>`;
+          }
+          svg += `<text x="${x}" y="220" font-size="11" fill="#4d4d4d" text-anchor="middle">${escapeHtml(shortLabel(label))}</text>`;
+        });
+        svg += '</svg>';
+
+        const legend = adjust
+          ? `<div class="chart-legend">`
+            + `<span class="legend-item"><span class="legend-swatch legend-swatch--solid"></span>現状</span>`
+            + `<span class="legend-item"><span class="legend-swatch legend-swatch--dash"></span>応答態度マイナス適用後 (${minusNum})</span>`
+            + `</div>`
+          : '';
+        return legend + svg;
+      }
+
+      function renderTraitList(labels, stages, totals) {
+        const rows = labels.map((label) => {
+          const score = isBlankValue(totals[label]) ? '-' : escapeHtml(totals[label]);
+          const stage = Number(stages[label]);
+          const copy = traitCopyForLabel(label);
+          return `<article class="trait-item">
+            <div class="trait-title">
+              <span>${escapeHtml(label)}</span>
+              <span class="trait-meta">
+                <span class="badge neutral">点数 ${score}</span>
+                ${evaluationBadge(stage)}
+              </span>
+            </div>
+            <p class="trait-copy">${escapeHtml(copy)}</p>
+          </article>`;
+        }).join('');
+        return `<section class="trait-list" aria-label="結果からの特性">
+          <h3>結果からの特性</h3>
+          ${rows}
+        </section>`;
+      }
+
+      function evaluationBadge(stage) {
+        if (!(stage >= 1 && stage <= 5)) return '<span class="badge">評価 -</span>';
+        if (stage >= 4) return '<span class="badge ok">評価 安定</span>';
+        if (stage === 3) return '<span class="badge warn">評価 標準</span>';
+        return '<span class="badge alert">評価 注意</span>';
+      }
+
+      function traitCopyForLabel(label) {
+        const copyByPrefix = {
+          '①': '予期せぬことが起こると動転しやすい。その時の気分で行動にムラがある。不快・不安な気持ちや表情を周囲に出しやすい。',
+          '②': '相手の状況や動きに気を配りにくい。言いたいことを相手に伝えるのが苦手。表情などから機嫌を読み取るのが困難。',
+          '③': '新しい環境や問題への適応に時間がかかる。自分の役割理解が難しい。新しいことややり方に抵抗感を示しやすい。',
+          '④': 'ストレスを溜め込みやすい。困難時に立ち止まりやすく、行き詰まると踏み出しにくい。',
+          '⑤': '自分で考えて行動するより他者の意見に従いやすい。指示通りに動くが創意工夫が少ない。良いと思っても実行に移しにくい。',
+          '⑥': '目標が不明瞭で自信を持ちにくい。途中で諦めたり投げ出すことがある。困難が起こると妥協しやすい。',
+          '⑦': '出来事や自分の行動を悲観的に捉えやすい。失敗や挫折から立ち直りにくい。気持ちの切り替えが苦手。',
+          '⑧': '初対面の人に自ら積極的に関わりにくい。協働が苦手。対人トラブルが起こると逃げてしまいやすい。',
+          '⑨': '人の気持ちや行動に無関心になりがち。気配りや配慮が欠けることがある。周囲に冷たい印象を与えやすい。',
+        };
+        const prefix = String(label || '').trim().charAt(0);
+        return copyByPrefix[prefix] || '特性文言が未設定です。';
+      }
+
+      function renderAttention(result, candidate, labels, stages, crossCheck) {
+        const area = document.getElementById('attention-area');
+        if (!result) {
+          area.className = 'muted';
+          area.textContent = '採点結果はまだ確定していません';
+          return;
+        }
+        area.className = '';
+        const cautions = labels.filter((label) => {
+          const value = Number(stages[label]);
+          return value >= 1 && value <= 2;
+        });
+        const parts = [];
+        parts.push(`<p><strong>注意領域:</strong> ${
+          cautions.length > 0
+            ? cautions.map((label) => `<span class="badge alert">${escapeHtml(label)}</span>`).join(' ')
+            : '<span class="badge ok">なし</span>'
+        }</p>`);
+        if (crossCheck.length > 0) {
+          parts.push(`<p style="margin-top:10px;"><strong>手書き不一致:</strong> ${
+            crossCheck.map((m) => `<span class="badge warn">${escapeHtml(m.item)}: 手書き${escapeHtml(m.handwritten)} / 再計算${escapeHtml(m.computed)}</span>`).join(' ')
+          } <span class="muted">(システム再計算を正とする)</span></p>`);
+        }
+        const jobReqLowItems = Array.isArray(result.job_requirement_low_items)
+          ? result.job_requirement_low_items
+          : [];
+        if (jobReqLowItems.length > 0) {
+          const jobReqMinus = numericOrNull(result.job_requirement_minus_points);
+          const displayMinus = jobReqMinus !== null && jobReqMinus < 0
+            ? jobReqMinus
+            : -jobReqLowItems.length;
+          const detail = jobReqLowItems
+            .map((item) => `${escapeHtml(item.label)} 段階${escapeHtml(item.stage)}`)
+            .join(' ');
+          parts.push(`<p style="margin-top:10px;"><strong>職務必要要件マイナス:</strong> ${escapeHtml(displayMinus)}（${detail}）</p>`);
+        }
+        const source = safeLink(candidate.source_url, '元ファイルを開く');
+        parts.push(`<p style="margin-top:10px;"><strong>元ファイル:</strong> ${source}</p>`);
+        area.innerHTML = parts.join('');
+      }
+
+      function shortLabel(label) {
+        const circled = String(label || '').match(/^[①-⑨⑩]/);
+        if (circled) return circled[0];
+        return String(label || '').slice(0, 4);
+      }
+
+      function sortDashboardLabels(labels) {
+        return labels
+          .map((label, index) => ({ label, index, order: dashboardLabelOrder(label) }))
+          .sort((a, b) => {
+            if (a.order !== b.order) return a.order - b.order;
+            return a.index - b.index;
+          })
+          .map((item) => item.label);
+      }
+
+      function dashboardLabelOrder(label) {
+        const circledOrder = {
+          '①': 1,
+          '②': 2,
+          '③': 3,
+          '④': 4,
+          '⑤': 5,
+          '⑥': 6,
+          '⑦': 7,
+          '⑧': 8,
+          '⑨': 9,
+          '⑩': 10,
+        };
+        const value = String(label || '').trim();
+        const circled = value.match(/^[①②③④⑤⑥⑦⑧⑨⑩]/);
+        if (circled) return circledOrder[circled[0]];
+        const numbered = value.match(/^(\d{1,2})(?:[.)、．\s]|$)/);
+        if (numbered) return Number(numbered[1]);
+        return Number.MAX_SAFE_INTEGER;
+      }
+
+      function safeLink(url, text) {
+        const value = String(url || '');
+        if (!/^https:\/\//.test(value)) return '-';
+        return `<a href="${escapeHtml(value)}" target="_blank" rel="noopener">${escapeHtml(text)}</a>`;
+      }
+
+      function readFile(file) {
+        const maxBytes = 10 * 1024 * 1024;
+        const allowedTypes = ['image/jpeg', 'image/png', 'image/heic', 'image/heif', 'application/pdf', ''];
+        if (file.size > maxBytes) {
+          throw new Error(`ファイルサイズは${Math.round(maxBytes / 1024 / 1024)}MB以下にしてください。`);
+        }
+        if (!allowedTypes.includes(file.type)) {
+          throw new Error('対応ファイル形式はJPEG/PNG/HEIC/HEIF/PDFです。');
+        }
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const base64 = String(reader.result).split(',')[1];
+            resolve({ name: file.name, mimeType: file.type, size: file.size, base64 });
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+      }
+
+      function showError(error) {
+        if (isUnauthorizedError(error)) return;
+        alert(error && error.message ? error.message : String(error));
+      }
+
+      function isUnauthorizedError(error) {
+        return String(error && error.message ? error.message : error).indexOf('Unauthorized') !== -1;
+      }
+
+      function errorMessage(error, fallback) {
+        if (isUnauthorizedError(error)) return '操作権限がありません。管理者に確認してください。';
+        return error && error.message ? error.message : fallback;
+      }
+
+      function setRegisterStatus(message, type) {
+        const status = document.getElementById('register-status');
+        status.textContent = message || '';
+        status.className = `status-message ${type || ''}`.trim();
+      }
+
+      function setDashboardStatus(message, type) {
+        const status = document.getElementById('dashboard-status');
+        status.textContent = message || '';
+        status.className = `status-message dashboard-state ${type || ''}`.trim();
+      }
+
+      function setDecisionStatus(message, type) {
+        const status = document.getElementById('decision-status');
+        status.textContent = message || '';
+        status.className = `status-message ${type || ''}`.trim();
+      }
+
+      function renderDecisionFromSelectedCandidate() {
+        const candidateId = document.getElementById('candidate-select').value;
+        const candidate = state.candidates.find((item) => String(item.candidate_id) === String(candidateId));
+        renderDecisionControls(
+          candidate ? candidate.hiring_decision || '' : '',
+          candidate ? candidate.employee_number || '' : ''
+        );
+      }
+
+      function renderDecisionControls(decision, employeeNumber) {
+        const normalizedDecision = decision === 'PASSED' || decision === 'FAILED' ? decision : '';
+        const normalizedEmployeeNumber = String(employeeNumber || '').trim();
+        const current = document.getElementById('decision-current');
+        if (normalizedDecision === 'PASSED') {
+          current.textContent = normalizedEmployeeNumber
+            ? `現在: 合格（職員番号 ${normalizedEmployeeNumber}）`
+            : '現在: 合格';
+        } else if (normalizedDecision === 'FAILED') {
+          current.textContent = '現在: 不合格';
+        } else {
+          current.textContent = '現在: 未登録';
+        }
+        document.getElementById('decision-select').value = normalizedDecision;
+        document.getElementById('employee-number').value = normalizedDecision === 'PASSED' ? normalizedEmployeeNumber : '';
+        updateDecisionEmployeeInput();
+      }
+
+      function updateDecisionEmployeeInput() {
+        const input = document.getElementById('employee-number');
+        const isPassed = document.getElementById('decision-select').value === 'PASSED';
+        const busy = state.dataLoading || state.dashboardLoading || state.finalizeLoading || state.decisionSaving;
+        const noCandidate = state.candidates.length === 0 || !document.getElementById('candidate-select').value;
+        input.disabled = !isPassed || busy || noCandidate;
+        if (!isPassed) input.value = '';
+      }
+
+      function setDashboardLoadingPlaceholder() {
+        document.getElementById('decision-current').textContent = '現在: 読み込み中';
+        document.getElementById('decision-select').value = '';
+        document.getElementById('employee-number').value = '';
+        updateDecisionEmployeeInput();
+        document.getElementById('rank').textContent = '取得中';
+        document.getElementById('attitude').textContent = '取得中';
+        document.getElementById('attitude-minus').textContent = '取得中';
+        document.getElementById('minus-points').textContent = '取得中';
+        document.getElementById('minus-breakdown').textContent = '取得中';
+        document.getElementById('unresolved').textContent = '取得中';
+        document.getElementById('profile-area').className = '';
+        document.getElementById('profile-area').innerHTML = '<div class="loading-box">カテゴリ別プロフィールを読み込んでいます...</div>';
+        document.getElementById('attention-area').className = '';
+        document.getElementById('attention-area').innerHTML = '<div class="loading-box">注意領域・確認事項を読み込んでいます...</div>';
+      }
+
+      function resetDashboardPlaceholder() {
+        renderDecisionControls('', '');
+        document.getElementById('rank').textContent = '-';
+        document.getElementById('attitude').textContent = '-';
+        document.getElementById('attitude-minus').textContent = '-';
+        document.getElementById('minus-points').textContent = '-';
+        document.getElementById('unresolved').textContent = '-';
+        document.getElementById('minus-breakdown').textContent = '-';
+        document.getElementById('profile-area').innerHTML = "<span class='muted'>候補者を選択してください</span>";
+        document.getElementById('attention-area').innerHTML = "<span class='muted'>-</span>";
+      }
+
+      function updateDashboardControls() {
+        const select = document.getElementById('candidate-select');
+        const button = document.getElementById('dashboard-button');
+        const label = button.querySelector('.button-label');
+        const finalizeBtn = document.getElementById('finalize-button');
+        const finalizeLabel = finalizeBtn.querySelector('.button-label');
+        const decisionBtn = document.getElementById('decision-button');
+        const decisionLabel = decisionBtn.querySelector('.button-label');
+        const decisionSelect = document.getElementById('decision-select');
+        const busy = state.dataLoading || state.dashboardLoading || state.finalizeLoading || state.decisionSaving;
+        const noCandidate = state.candidates.length === 0 || !select.value;
+        select.disabled = busy || noCandidate;
+        button.disabled = busy || noCandidate;
+        button.classList.toggle('is-loading', state.dashboardLoading);
+        label.textContent = state.dashboardLoading ? '取得中...' : '結果を表示';
+        finalizeBtn.disabled = busy || noCandidate;
+        finalizeBtn.classList.toggle('is-loading', state.finalizeLoading);
+        finalizeLabel.textContent = state.finalizeLoading ? '確定中...' : '採点確定';
+        decisionSelect.disabled = busy || noCandidate;
+        decisionBtn.disabled = busy || noCandidate;
+        decisionBtn.classList.toggle('is-loading', state.decisionSaving);
+        decisionLabel.textContent = state.decisionSaving ? '登録中...' : '登録する';
+        updateDecisionEmployeeInput();
+        document.getElementById('dashboard').setAttribute('aria-busy', String(busy));
+      }
+
+      function escapeHtml(value) {
+        return String(value === null || value === undefined ? '' : value).replace(/[&<>"']/g, (char) => {
+          return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
+        });
+      }
+
+      refreshData();
+    </script>
+  </body>
+</html>

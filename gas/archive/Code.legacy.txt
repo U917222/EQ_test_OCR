@@ -1,0 +1,660 @@
+// ARCHIVED LEGACY PROTOTYPE.
+// This file is intentionally outside the deployable GAS root as a .txt archive.
+// Production deployments should use Code.production.gs.
+
+const SHEETS = {
+  candidates: 'Candidates',
+  rawAnswers: 'RawAnswers',
+  reviewQueue: 'ReviewQueue',
+  scoreRules: 'ScoreRules',
+  scoreBands: 'ScoreBands',
+  rankRules: 'RankRules',
+  results: 'Results',
+  auditLog: 'AuditLog',
+  config: 'Config',
+};
+
+const HEADERS = {
+  Candidates: [
+    'candidate_id',
+    'name',
+    'test_date',
+    'role',
+    'uploaded_at',
+    'status',
+    'source_url',
+    'memo',
+  ],
+  RawAnswers: [
+    'candidate_id',
+    ...Array.from({ length: 200 }, (_, i) => `q${String(i + 1).padStart(3, '0')}`),
+    'confidence_avg',
+    'unresolved_count',
+    'updated_at',
+  ],
+  ReviewQueue: [
+    'review_id',
+    'candidate_id',
+    'question_no',
+    'detected',
+    'reason',
+    'confidence',
+    'image_link',
+    'corrected_answer',
+    'status',
+    'resolved_by',
+    'resolved_at',
+  ],
+  ScoreRules: [
+    'question_no',
+    'category',
+    'score_a',
+    'score_b',
+    'score_c',
+    'score_d',
+  ],
+  ScoreBands: [
+    'category',
+    'min_score',
+    'max_score',
+    'stage',
+  ],
+  RankRules: [
+    'rule_id',
+    'label',
+    'condition_json',
+    'rank',
+    'minus_points',
+    'note',
+  ],
+  Results: [
+    'candidate_id',
+    'total_rank',
+    'response_attitude',
+    'minus_points',
+    'category_scores_json',
+    'category_stages_json',
+    'notes',
+    'finalized_by',
+    'finalized_at',
+  ],
+  AuditLog: [
+    'logged_at',
+    'actor',
+    'action',
+    'candidate_id',
+    'detail_json',
+  ],
+  Config: [
+    'key',
+    'value',
+    'note',
+  ],
+};
+
+function doGet() {
+  setupWorkbook();
+  return HtmlService.createTemplateFromFile('Index')
+    .evaluate()
+    .setTitle('CHEQ採点支援')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+function setupWorkbook() {
+  const lock = LockService.getDocumentLock();
+  lock.waitLock(30000);
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    Object.keys(HEADERS).forEach((sheetName) => {
+      const sheet = getOrCreateSheet_(ss, sheetName);
+      ensureHeader_(sheet, HEADERS[sheetName]);
+    });
+    seedConfig_();
+    seedSampleRules_();
+    return { ok: true, spreadsheetUrl: ss.getUrl() };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function registerCandidate(payload) {
+  setupWorkbook();
+  validateRequired_(payload, ['name', 'testDate']);
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const candidateId = Utilities.getUuid();
+  const uploadedAt = new Date();
+  const sourceUrl = payload.file ? saveUploadedFile_(candidateId, payload.file) : '';
+
+  appendObject_(ss.getSheetByName(SHEETS.candidates), {
+    candidate_id: candidateId,
+    name: payload.name,
+    test_date: payload.testDate,
+    role: payload.role || '',
+    uploaded_at: uploadedAt,
+    status: 'UPLOADED',
+    source_url: sourceUrl,
+    memo: payload.memo || '',
+  });
+
+  appendObject_(ss.getSheetByName(SHEETS.rawAnswers), {
+    candidate_id: candidateId,
+    confidence_avg: '',
+    unresolved_count: '',
+    updated_at: uploadedAt,
+  });
+
+  logAudit_('REGISTER_CANDIDATE', candidateId, {
+    name: payload.name,
+    testDate: payload.testDate,
+    role: payload.role || '',
+    hasFile: Boolean(payload.file),
+  });
+
+  return { ok: true, candidateId, sourceUrl };
+}
+
+function importRecognitionResult(candidateId, recognition) {
+  setupWorkbook();
+  if (!candidateId) throw new Error('candidateId is required');
+  if (!recognition || !recognition.answers) throw new Error('recognition.answers is required');
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const answers = normalizeAnswers_(recognition.answers);
+  const confidenceByQuestion = recognition.confidenceByQuestion || {};
+  const reviewItems = buildReviewItems_(candidateId, answers, confidenceByQuestion, recognition.imageLinks || {});
+  const confidenceAvg = averageConfidence_(confidenceByQuestion);
+
+  upsertRawAnswers_(ss, candidateId, answers, confidenceAvg, reviewItems.length);
+  replaceReviewItems_(ss, candidateId, reviewItems);
+  updateCandidateStatus_(ss, candidateId, reviewItems.length > 0 ? 'REVIEW_REQUIRED' : 'READY_TO_FINALIZE');
+
+  logAudit_('IMPORT_RECOGNITION_RESULT', candidateId, {
+    confidenceAvg,
+    unresolvedCount: reviewItems.length,
+  });
+
+  return {
+    ok: true,
+    candidateId,
+    confidenceAvg,
+    unresolvedCount: reviewItems.length,
+  };
+}
+
+function getCandidates() {
+  setupWorkbook();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return readObjects_(ss.getSheetByName(SHEETS.candidates));
+}
+
+function getReviewQueue(candidateId) {
+  setupWorkbook();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  return readObjects_(ss.getSheetByName(SHEETS.reviewQueue))
+    .filter((row) => !candidateId || row.candidate_id === candidateId)
+    .filter((row) => row.status !== 'RESOLVED');
+}
+
+function resolveReviewItem(reviewId, correctedAnswer) {
+  setupWorkbook();
+  if (!reviewId) throw new Error('reviewId is required');
+  if (!['a', 'b', 'c', 'd'].includes(correctedAnswer)) {
+    throw new Error('correctedAnswer must be one of a/b/c/d');
+  }
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEETS.reviewQueue);
+  const table = readTable_(sheet);
+  const rowIndex = table.rows.findIndex((row) => row.review_id === reviewId);
+  if (rowIndex < 0) throw new Error(`Review item not found: ${reviewId}`);
+
+  const row = table.rows[rowIndex];
+  const actor = Session.getActiveUser().getEmail() || 'unknown';
+  setCellByHeader_(sheet, table.headers, rowIndex + 2, 'corrected_answer', correctedAnswer);
+  setCellByHeader_(sheet, table.headers, rowIndex + 2, 'status', 'RESOLVED');
+  setCellByHeader_(sheet, table.headers, rowIndex + 2, 'resolved_by', actor);
+  setCellByHeader_(sheet, table.headers, rowIndex + 2, 'resolved_at', new Date());
+
+  patchRawAnswer_(ss, row.candidate_id, row.question_no, correctedAnswer);
+  refreshUnresolvedCount_(ss, row.candidate_id);
+
+  logAudit_('RESOLVE_REVIEW_ITEM', row.candidate_id, {
+    reviewId,
+    questionNo: row.question_no,
+    correctedAnswer,
+  });
+
+  return { ok: true };
+}
+
+function calculateCandidateResult(candidateId) {
+  setupWorkbook();
+  if (!candidateId) throw new Error('candidateId is required');
+
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const rawAnswer = findById_(ss.getSheetByName(SHEETS.rawAnswers), 'candidate_id', candidateId);
+  if (!rawAnswer) throw new Error(`Raw answers not found: ${candidateId}`);
+
+  const unresolved = Number(rawAnswer.unresolved_count || 0);
+  if (unresolved > 0) {
+    throw new Error(`Unresolved review items remain: ${unresolved}`);
+  }
+
+  const scoreRules = readObjects_(ss.getSheetByName(SHEETS.scoreRules));
+  const scoreBands = readObjects_(ss.getSheetByName(SHEETS.scoreBands));
+  const answers = extractAnswers_(rawAnswer);
+  const categoryScores = calculateCategoryScores_(answers, scoreRules);
+  const categoryStages = calculateStages_(categoryScores, scoreBands);
+  const rankResult = calculateRank_(categoryStages);
+  const finalizedAt = new Date();
+  const actor = Session.getActiveUser().getEmail() || 'unknown';
+
+  upsertResult_(ss, {
+    candidate_id: candidateId,
+    total_rank: rankResult.rank,
+    response_attitude: categoryStages['応答態度'] || '',
+    minus_points: rankResult.minusPoints,
+    category_scores_json: JSON.stringify(categoryScores),
+    category_stages_json: JSON.stringify(categoryStages),
+    notes: rankResult.note,
+    finalized_by: actor,
+    finalized_at: finalizedAt,
+  });
+
+  updateCandidateStatus_(ss, candidateId, 'FINALIZED');
+  logAudit_('CALCULATE_CANDIDATE_RESULT', candidateId, {
+    rank: rankResult.rank,
+    minusPoints: rankResult.minusPoints,
+  });
+
+  return getDashboardData(candidateId);
+}
+
+function getDashboardData(candidateId) {
+  setupWorkbook();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const candidates = readObjects_(ss.getSheetByName(SHEETS.candidates));
+  const candidate = candidateId
+    ? candidates.find((row) => row.candidate_id === candidateId)
+    : candidates[0];
+  if (!candidate) return { candidate: null, result: null };
+
+  const result = findById_(ss.getSheetByName(SHEETS.results), 'candidate_id', candidate.candidate_id);
+  const rawAnswer = findById_(ss.getSheetByName(SHEETS.rawAnswers), 'candidate_id', candidate.candidate_id);
+  const reviewQueue = getReviewQueue(candidate.candidate_id);
+
+  return {
+    candidate,
+    result: result ? {
+      ...result,
+      category_scores: safeJsonParse_(result.category_scores_json, {}),
+      category_stages: safeJsonParse_(result.category_stages_json, {}),
+    } : null,
+    rawAnswerSummary: rawAnswer ? {
+      confidence_avg: rawAnswer.confidence_avg,
+      unresolved_count: rawAnswer.unresolved_count,
+      updated_at: rawAnswer.updated_at,
+    } : null,
+    reviewQueue,
+  };
+}
+
+function getDemoData() {
+  return {
+    candidates: getCandidates(),
+    reviewQueue: getReviewQueue(),
+  };
+}
+
+function getOrCreateSheet_(ss, name) {
+  const existing = ss.getSheetByName(name);
+  if (existing) return existing;
+
+  try {
+    return ss.insertSheet(name);
+  } catch (error) {
+    const createdByConcurrentRun = ss.getSheetByName(name);
+    if (createdByConcurrentRun) return createdByConcurrentRun;
+    throw error;
+  }
+}
+
+function ensureHeader_(sheet, expectedHeaders) {
+  const current = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), expectedHeaders.length)).getValues()[0];
+  const hasAnyHeader = current.some((value) => String(value || '').trim());
+  if (!hasAnyHeader) {
+    sheet.getRange(1, 1, 1, expectedHeaders.length).setValues([expectedHeaders]);
+    sheet.setFrozenRows(1);
+    return;
+  }
+
+  const currentSet = new Set(current.filter(Boolean));
+  const missing = expectedHeaders.filter((header) => !currentSet.has(header));
+  if (missing.length > 0) {
+    sheet.getRange(1, current.length + 1, 1, missing.length).setValues([missing]);
+  }
+}
+
+function appendObject_(sheet, object) {
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
+  const row = headers.map((header) => object[header] === undefined ? '' : object[header]);
+  sheet.appendRow(row);
+}
+
+function readTable_(sheet) {
+  const values = sheet.getDataRange().getValues();
+  if (values.length === 0) return { headers: [], rows: [] };
+  const headers = values[0].map(String);
+  const rows = values.slice(1)
+    .filter((row) => row.some((value) => value !== ''))
+    .map((row) => {
+      const object = {};
+      headers.forEach((header, index) => {
+        object[header] = row[index];
+      });
+      return object;
+    });
+  return { headers, rows };
+}
+
+function readObjects_(sheet) {
+  return readTable_(sheet).rows;
+}
+
+function findById_(sheet, key, value) {
+  return readObjects_(sheet).find((row) => row[key] === value) || null;
+}
+
+function setCellByHeader_(sheet, headers, row, header, value) {
+  const column = headers.indexOf(header) + 1;
+  if (column <= 0) throw new Error(`Header not found: ${header}`);
+  sheet.getRange(row, column).setValue(value);
+}
+
+function validateRequired_(payload, keys) {
+  keys.forEach((key) => {
+    if (!payload || !payload[key]) throw new Error(`${key} is required`);
+  });
+}
+
+function saveUploadedFile_(candidateId, file) {
+  const folderId = getConfig_('UPLOAD_FOLDER_ID');
+  const folder = folderId ? DriveApp.getFolderById(folderId) : DriveApp.getRootFolder();
+  const bytes = Utilities.base64Decode(file.base64);
+  const blob = Utilities.newBlob(bytes, file.mimeType || 'application/octet-stream', file.name || `${candidateId}.bin`);
+  const saved = folder.createFile(blob);
+  return saved.getUrl();
+}
+
+function normalizeAnswers_(answers) {
+  const normalized = {};
+  for (let i = 1; i <= 200; i += 1) {
+    const key = `q${String(i).padStart(3, '0')}`;
+    const value = Array.isArray(answers) ? answers[i - 1] : answers[key] || answers[String(i)] || '';
+    normalized[key] = String(value || '').toLowerCase();
+  }
+  return normalized;
+}
+
+function buildReviewItems_(candidateId, answers, confidenceByQuestion, imageLinks) {
+  const items = [];
+  Object.keys(answers).forEach((key) => {
+    const answer = answers[key];
+    const questionNo = Number(key.replace('q', ''));
+    const confidence = Number(confidenceByQuestion[key] || confidenceByQuestion[String(questionNo)] || 0);
+    const reasons = [];
+
+    if (!answer) reasons.push('未回答');
+    if (!['', 'a', 'b', 'c', 'd'].includes(answer)) reasons.push('複数回答');
+    if (confidence > 0 && confidence < 0.8) reasons.push('低信頼度');
+
+    if (reasons.length > 0) {
+      items.push({
+        review_id: Utilities.getUuid(),
+        candidate_id: candidateId,
+        question_no: questionNo,
+        detected: answer,
+        reason: reasons.join(', '),
+        confidence,
+        image_link: imageLinks[key] || imageLinks[String(questionNo)] || '',
+        corrected_answer: '',
+        status: 'OPEN',
+        resolved_by: '',
+        resolved_at: '',
+      });
+    }
+  });
+  return items;
+}
+
+function averageConfidence_(confidenceByQuestion) {
+  const values = Object.values(confidenceByQuestion || {}).map(Number).filter((value) => value > 0);
+  if (values.length === 0) return '';
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function upsertRawAnswers_(ss, candidateId, answers, confidenceAvg, unresolvedCount) {
+  const sheet = ss.getSheetByName(SHEETS.rawAnswers);
+  const table = readTable_(sheet);
+  const rowIndex = table.rows.findIndex((row) => row.candidate_id === candidateId);
+  const object = {
+    candidate_id: candidateId,
+    ...answers,
+    confidence_avg: confidenceAvg,
+    unresolved_count: unresolvedCount,
+    updated_at: new Date(),
+  };
+
+  if (rowIndex < 0) {
+    appendObject_(sheet, object);
+    return;
+  }
+
+  table.headers.forEach((header, index) => {
+    if (object[header] !== undefined) {
+      sheet.getRange(rowIndex + 2, index + 1).setValue(object[header]);
+    }
+  });
+}
+
+function replaceReviewItems_(ss, candidateId, reviewItems) {
+  const sheet = ss.getSheetByName(SHEETS.reviewQueue);
+  const table = readTable_(sheet);
+  const keptRows = table.rows.filter((row) => row.candidate_id !== candidateId);
+  const values = [table.headers].concat(keptRows.map((row) => table.headers.map((header) => row[header] || '')));
+  sheet.clearContents();
+  sheet.getRange(1, 1, values.length, table.headers.length).setValues(values);
+  reviewItems.forEach((item) => appendObject_(sheet, item));
+}
+
+function patchRawAnswer_(ss, candidateId, questionNo, answer) {
+  const sheet = ss.getSheetByName(SHEETS.rawAnswers);
+  const table = readTable_(sheet);
+  const rowIndex = table.rows.findIndex((row) => row.candidate_id === candidateId);
+  if (rowIndex < 0) throw new Error(`Raw answers not found: ${candidateId}`);
+  const key = `q${String(questionNo).padStart(3, '0')}`;
+  setCellByHeader_(sheet, table.headers, rowIndex + 2, key, answer);
+}
+
+function refreshUnresolvedCount_(ss, candidateId) {
+  const openItems = readObjects_(ss.getSheetByName(SHEETS.reviewQueue))
+    .filter((row) => row.candidate_id === candidateId && row.status !== 'RESOLVED');
+  const sheet = ss.getSheetByName(SHEETS.rawAnswers);
+  const table = readTable_(sheet);
+  const rowIndex = table.rows.findIndex((row) => row.candidate_id === candidateId);
+  if (rowIndex >= 0) {
+    setCellByHeader_(sheet, table.headers, rowIndex + 2, 'unresolved_count', openItems.length);
+    setCellByHeader_(sheet, table.headers, rowIndex + 2, 'updated_at', new Date());
+  }
+  updateCandidateStatus_(ss, candidateId, openItems.length > 0 ? 'REVIEW_REQUIRED' : 'READY_TO_FINALIZE');
+}
+
+function updateCandidateStatus_(ss, candidateId, status) {
+  const sheet = ss.getSheetByName(SHEETS.candidates);
+  const table = readTable_(sheet);
+  const rowIndex = table.rows.findIndex((row) => row.candidate_id === candidateId);
+  if (rowIndex >= 0) {
+    setCellByHeader_(sheet, table.headers, rowIndex + 2, 'status', status);
+  }
+}
+
+function extractAnswers_(rawAnswer) {
+  const answers = {};
+  for (let i = 1; i <= 200; i += 1) {
+    const key = `q${String(i).padStart(3, '0')}`;
+    answers[i] = String(rawAnswer[key] || '').toLowerCase();
+  }
+  return answers;
+}
+
+function calculateCategoryScores_(answers, scoreRules) {
+  const scores = {};
+  scoreRules.forEach((rule) => {
+    const questionNo = Number(rule.question_no);
+    const answer = answers[questionNo];
+    if (!answer) return;
+    const score = Number(rule[`score_${answer}`] || 0);
+    const category = String(rule.category || '').trim();
+    if (!category) return;
+    scores[category] = (scores[category] || 0) + score;
+  });
+  return scores;
+}
+
+function calculateStages_(categoryScores, scoreBands) {
+  const stages = {};
+  Object.keys(categoryScores).forEach((category) => {
+    const score = Number(categoryScores[category]);
+    const band = scoreBands.find((row) => {
+      return row.category === category &&
+        score >= Number(row.min_score) &&
+        score <= Number(row.max_score);
+    });
+    stages[category] = band ? Number(band.stage) : '';
+  });
+  return stages;
+}
+
+function calculateRank_(categoryStages) {
+  const stages = Object.values(categoryStages).map(Number).filter((value) => value > 0);
+  if (stages.length === 0) {
+    return { rank: '', minusPoints: '', note: '段階得点がありません' };
+  }
+
+  const minStage = Math.min(...stages);
+  const average = stages.reduce((sum, value) => sum + value, 0) / stages.length;
+  const lowStageCount = stages.filter((value) => value <= 2).length;
+  const minusPoints = calculateResponseAttitudeMinusPoints_(categoryStages);
+
+  if (minStage <= 1 || lowStageCount >= 3) {
+    return { rank: 'D', minusPoints, note: '低段階項目が複数あります' };
+  }
+  if (lowStageCount >= 1 || minusPoints < 0 || average < 3) {
+    return { rank: 'C', minusPoints, note: '面接で注意項目を確認してください' };
+  }
+  if (average >= 4) {
+    return { rank: 'A', minusPoints, note: '全体的に安定しています' };
+  }
+  return { rank: 'B', minusPoints, note: '概ね標準範囲です' };
+}
+
+function calculateResponseAttitudeMinusPoints_(categoryStages) {
+  const responseAttitude = Number(categoryStages['応答態度'] || 0);
+  if (responseAttitude >= 5) return -2;
+  if (responseAttitude >= 4) return -1;
+  return 0;
+}
+
+function upsertResult_(ss, result) {
+  const sheet = ss.getSheetByName(SHEETS.results);
+  const table = readTable_(sheet);
+  const rowIndex = table.rows.findIndex((row) => row.candidate_id === result.candidate_id);
+  if (rowIndex < 0) {
+    appendObject_(sheet, result);
+    return;
+  }
+  table.headers.forEach((header, index) => {
+    if (result[header] !== undefined) {
+      sheet.getRange(rowIndex + 2, index + 1).setValue(result[header]);
+    }
+  });
+}
+
+function getConfig_(key) {
+  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(SHEETS.config);
+  const row = readObjects_(sheet).find((item) => item.key === key);
+  return row ? row.value : '';
+}
+
+function seedConfig_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(SHEETS.config);
+  if (sheet.getLastRow() > 1) return;
+  appendObject_(sheet, {
+    key: 'UPLOAD_FOLDER_ID',
+    value: '',
+    note: '空欄の場合はDriveのマイドライブ直下に保存します',
+  });
+}
+
+function seedSampleRules_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const rules = ss.getSheetByName(SHEETS.scoreRules);
+  const bands = ss.getSheetByName(SHEETS.scoreBands);
+  if (rules.getLastRow() <= 1) {
+    [
+      [1, 'セルフコントロール', 3, 2, 1, 0],
+      [2, 'コミュニケーション', 0, 1, 2, 3],
+      [3, '状況認識力', 3, 2, 1, 0],
+      [4, 'ストレス対処力', 0, 1, 2, 3],
+      [5, '積極性', 3, 2, 1, 0],
+      [6, 'チームワーク', 0, 1, 2, 3],
+      [7, '応答態度', 3, 2, 1, 0],
+    ].forEach((row) => appendObject_(rules, {
+      question_no: row[0],
+      category: row[1],
+      score_a: row[2],
+      score_b: row[3],
+      score_c: row[4],
+      score_d: row[5],
+    }));
+  }
+
+  if (bands.getLastRow() <= 1) {
+    ['セルフコントロール', 'コミュニケーション', '状況認識力', 'ストレス対処力', '積極性', 'チームワーク', '応答態度']
+      .forEach((category) => {
+        [
+          [0, 3, 1],
+          [4, 7, 2],
+          [8, 11, 3],
+          [12, 15, 4],
+          [16, 999, 5],
+        ].forEach((band) => appendObject_(bands, {
+          category,
+          min_score: band[0],
+          max_score: band[1],
+          stage: band[2],
+        }));
+      });
+  }
+}
+
+function safeJsonParse_(value, fallback) {
+  try {
+    return value ? JSON.parse(value) : fallback;
+  } catch (error) {
+    return fallback;
+  }
+}
+
+function logAudit_(action, candidateId, detail) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  appendObject_(ss.getSheetByName(SHEETS.auditLog), {
+    logged_at: new Date(),
+    actor: Session.getActiveUser().getEmail() || 'unknown',
+    action,
+    candidate_id: candidateId || '',
+    detail_json: JSON.stringify(detail || {}),
+  });
+}

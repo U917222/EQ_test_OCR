@@ -1,0 +1,47 @@
+.DS_Store
+
+# Local agent/tool state
+.claude/
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.local
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Node
+node_modules/
+dist/
+build/
+coverage/
+.turbo/
+.next/
+
+# Apps Script / clasp
+gas/.clasp.json
+
+# Local image fixtures and private scans
+*.HEIC
+*.heic
+*.jpg
+*.jpeg
+*.png
+*.pdf
+!ocr-api/src/scoresheet_digit_map.json
+
+# Generated review/output files
+out/
+tmp/
+*.log

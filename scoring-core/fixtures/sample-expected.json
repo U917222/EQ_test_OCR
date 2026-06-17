@@ -1,0 +1,56 @@
+{
+  "description": "回帰正解: 適性テスト用（応答態度1）.pdf の採点表(page.5)。rowScores は用紙の手書き行得点、itemTotals はシステム再計算の正。⑦のみ手書き合計(13)と再計算(14)が不一致で crossCheck 発火が期待値。新ルール: 職務必要要件マイナス含む。",
+  "rowScores": {
+    "A1": 8, "B1": 5, "C1": 8, "D1": 8, "E1": 7,
+    "F1": 5, "G1": 8, "H1": 7, "I1": 5, "J1": 0,
+    "A2": 7, "B2": 5, "C2": 6, "D2": 8, "E2": 7,
+    "F2": 5, "G2": 8, "H2": 7, "I2": 10, "J2": 1
+  },
+  "itemTotals": {
+    "self_control": 10,
+    "communication": 15,
+    "situation": 15,
+    "stress": 16,
+    "proactivity": 14,
+    "goal": 14,
+    "positive": 14,
+    "teamwork": 10,
+    "hospitality": 16,
+    "attitude": 1
+  },
+  "handwrittenTotals": {
+    "self_control": 10,
+    "communication": 15,
+    "situation": 15,
+    "stress": 16,
+    "proactivity": 14,
+    "goal": 14,
+    "positive": 13,
+    "teamwork": 10,
+    "hospitality": 16,
+    "attitude": 1
+  },
+  "expected": {
+    "crossCheckMismatchKeys": ["positive"],
+    "stages": {
+      "self_control": 2,
+      "communication": 4,
+      "situation": 3,
+      "stress": 3,
+      "proactivity": 3,
+      "goal": 3,
+      "positive": 4,
+      "teamwork": 2,
+      "hospitality": 3,
+      "attitude": 1
+    },
+    "selfControlStage": 2,
+    "attitudeStage": 1,
+    "attitudeMinusPoints": 0,
+    "jobRequirementMinusPoints": -1,
+    "jobRequirementLowItems": [
+      { "key": "teamwork", "label": "⑧チームワーク", "stage": 2 }
+    ],
+    "minusPoints": -1
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "cheq-scoring-core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "CHEQ採点表(page.5) 採点コア（純粋関数）。GASへは clasp/コピーで配布し、node:test でローカル検証する。",
+  "type": "commonjs",
+  "scripts": {
+    "test": "node --test"
+  },
+  "packageManager": "pnpm@10.28.0"
+}
