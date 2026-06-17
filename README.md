@@ -247,19 +247,15 @@ Apps Script 画面で設定を入れます。
 | --- | --- |
 | `SPREADSHEET_ID` | 2 で控えたスプレッドシート ID |
 | `ADMIN_USER_EMAILS` | 管理者のメールアドレス |
-| `AUTHORIZED_USER_EMAILS` | 使う人のメールアドレス。複数ならカンマ区切り |
-| `APP_ACCESS_CODE` | Web 画面で入力するアクセスコード |
 
 例:
 
 ```text
 SPREADSHEET_ID = ここにスプレッドシートID
 ADMIN_USER_EMAILS = admin@example.com
-AUTHORIZED_USER_EMAILS = user1@example.com,user2@example.com
-APP_ACCESS_CODE = cheq-ここに長めの合言葉
 ```
 
-`APP_ACCESS_CODE` は Web 画面を開いた人が入力する合言葉です。Apps Script は利用者のメールアドレスを取得できない場合があるため、必ず入れておくと安全です。利用者にはこの値だけを伝え、GitHub や公開資料には載せないでください。
+Web 画面の通常操作は、URL を知っている人なら利用できます。URL 自体を利用者以外に共有しないでください。
 
 OCR API を使う場合は、あとで次も入れます。
 
@@ -286,7 +282,7 @@ OCR API を使う場合は、あとで次も入れます。
 
 この URL が利用者用の画面です。
 
-`アクセスできるユーザー` を `全員` にする理由は、Cloud Run から Apps Script へ読み取り結果を返すためです。知らない人が URL を開いても、操作には `APP_ACCESS_CODE` または許可済みメールアドレスが必要です。URL と `APP_ACCESS_CODE` は利用者以外に共有しないでください。
+`アクセスできるユーザー` を `全員` にすると、Web アプリ URL を知っている人は通常操作を利用できます。URL は利用者以外に共有しないでください。
 
 ## 8. OCR API を Cloud Run に出す
 
@@ -702,14 +698,13 @@ gcloud run services describe "$CHEQ_SERVICE" --region "$CHEQ_REGION" \
 ## 9. 使い方
 
 1. Web アプリの URL を開く
-2. 画面右上の `アクセスコード` に `APP_ACCESS_CODE` を入力する
-3. 候補者名、検査日、役割、メモを入力する
-4. 採点用紙の画像または PDF を選ぶ
-5. 登録する
-6. 読み取りが終わるまで待つ
-7. `ReviewQueue` に確認が必要なものがあれば修正する
-8. 採点確定を押す
-9. 結果を確認する
+2. 候補者名、検査日、役割、メモを入力する
+3. 採点用紙の画像または PDF を選ぶ
+4. 登録する
+5. 読み取りが終わるまで待つ
+6. `ReviewQueue` に確認が必要なものがあれば修正する
+7. 採点確定を押す
+8. 結果を確認する
 
 Web 画面にアップロードできるファイル:
 
@@ -746,7 +741,7 @@ pnpm test
 最低限、次を確認します。
 
 - Web アプリを開ける
-- `APP_ACCESS_CODE` または許可したメールアドレスで操作できる
+- Web アプリ URL を知っている利用者が操作できる
 - 候補者を登録できる
 - ファイルをアップロードできる
 - 確認待ちを修正できる
@@ -757,11 +752,10 @@ pnpm test
 OCR API を使う場合は、次の順番で確認します。
 
 1. Web アプリを開く
-2. `APP_ACCESS_CODE` を入力する
-3. テスト用の候補者を登録し、JPEG、PNG、または PDF の採点用紙をアップロードする
-4. `Candidates` シートで候補者の行が増えることを確認する
-5. OCR 中はステータスが `PROCESSING` になることを確認する
-6. Cloud Run のログを見る
+2. テスト用の候補者を登録し、JPEG、PNG、または PDF の採点用紙をアップロードする
+3. `Candidates` シートで候補者の行が増えることを確認する
+4. OCR 中はステータスが `PROCESSING` になることを確認する
+5. Cloud Run のログを見る
 
 ```bash
 gcloud run services logs read ocr-api --region asia-northeast1 --limit 50
@@ -779,7 +773,7 @@ Cloud Run のログに何も出ない場合は、`Config` の `RECOGNITION_ENDPO
 | 困ったこと | 確認すること |
 | --- | --- |
 | Web アプリが開けない | デプロイ URL が正しいか、アクセス権限があるか確認 |
-| `Unauthorized` と出る | 画面右上のアクセスコードが `APP_ACCESS_CODE` と同じか確認。メール認証で使う場合は `AUTHORIZED_USER_EMAILS` または `ADMIN_USER_EMAILS` も確認 |
+| `Unauthorized` と出る | Apps Script に最新の `gas/Code.production.gs` を反映し、Web アプリを再デプロイしたか確認 |
 | アップロードできない | `Config` の `UPLOAD_FOLDER_ID` が入っているか確認 |
 | OCR が動かない | `RECOGNITION_ENDPOINT_URL`、`RECOGNITION_API_KEY`、`RECOGNITION_ENDPOINT_HOSTS` を確認 |
 | Cloud Run が Drive を読めない | Drive フォルダを Cloud Run のサービスアカウントに共有したか確認 |

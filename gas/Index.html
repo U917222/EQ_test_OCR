@@ -600,6 +600,10 @@
               <span class="button-spinner" aria-hidden="true"></span>
               <span class="button-label">採点確定</span>
             </button>
+            <button type="button" id="pdf-button" onclick="downloadResultPdf()" disabled>
+              <span class="button-spinner" aria-hidden="true"></span>
+              <span class="button-label">PDF保存</span>
+            </button>
             <p id="dashboard-status" class="status-message dashboard-state" role="status" aria-live="polite">
               候補者一覧を読み込んでいます
             </p>
@@ -651,6 +655,8 @@
         cellsLoading: false,
         cellsSaving: false,
         cellsCandidateId: '',
+        dashboardData: null,
+        pdfDownloading: false,
         candidateFilters: {
           name: '',
           decision: '',
@@ -722,8 +728,10 @@
       });
 
       document.getElementById('candidate-select').addEventListener('change', () => {
+        state.dashboardData = null;
         renderDecisionFromSelectedCandidate();
         setDecisionStatus('', '');
+        updateDashboardControls();
       });
 
       document.querySelectorAll('.candidate-search-input').forEach((input) => {
@@ -871,6 +879,7 @@
           return;
         }
         state.dashboardLoading = true;
+        state.dashboardData = null;
         setDashboardStatus('結果を取得しています...', 'warn');
         updateDashboardControls();
         setDashboardLoadingPlaceholder();
@@ -900,6 +909,7 @@
           return;
         }
         state.finalizeLoading = true;
+        state.dashboardData = null;
         setDashboardStatus('採点を確定しています...', 'warn');
         updateDashboardControls();
         setDashboardLoadingPlaceholder();
@@ -1111,6 +1121,7 @@
       }
 
       function renderDashboard(data) {
+        state.dashboardData = data && data.result ? data : null;
         const result = data.result || {};
         const summary = data.rawCellSummary || {};
         const candidate = data.candidate || {};
@@ -1151,6 +1162,66 @@
             + renderTraitList(labels, stages, totals);
         }
         renderAttention(data.result, candidate, labels, stages, result.cross_check || []);
+      }
+
+      function currentPrintableData() {
+        const selectedId = document.getElementById('candidate-select').value;
+        if (!state.dashboardData || !state.dashboardData.result) return null;
+        const candidate = state.dashboardData.candidate || {};
+        return String(candidate.candidate_id || '') === String(selectedId || '')
+          ? state.dashboardData
+          : null;
+      }
+
+      function downloadResultPdf() {
+        const data = currentPrintableData();
+        if (!data) {
+          setDashboardStatus('先に結果を表示または採点確定してください', 'warn');
+          return;
+        }
+        const candidate = data.candidate || {};
+        state.pdfDownloading = true;
+        setDashboardStatus('PDFを作成しています...', 'warn');
+        updateDashboardControls();
+        google.script.run
+          .withSuccessHandler((file) => {
+            state.pdfDownloading = false;
+            try {
+              saveBase64File(file);
+              setDashboardStatus('PDFをダウンロードしました', 'ok');
+            } catch (error) {
+              setDashboardStatus(errorMessage(error, 'PDFの保存に失敗しました'), 'alert');
+              showError(error);
+            }
+            updateDashboardControls();
+          })
+          .withFailureHandler((error) => {
+            state.pdfDownloading = false;
+            setDashboardStatus(errorMessage(error, 'PDFの作成に失敗しました'), 'alert');
+            updateDashboardControls();
+            showError(error);
+          })
+          .downloadCandidateResultPdf(candidate.candidate_id, getAccessCode());
+      }
+
+      function saveBase64File(file) {
+        if (!file || !file.base64) {
+          throw new Error('PDFデータを取得できませんでした。');
+        }
+        const binary = atob(file.base64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i += 1) {
+          bytes[i] = binary.charCodeAt(i);
+        }
+        const blob = new Blob([bytes], { type: file.mimeType || 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.fileName || 'CHEQ_result.pdf';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
 
       function renderMinusMetric(result, hasResult) {
@@ -1522,10 +1593,11 @@
         const label = button.querySelector('.button-label');
         const finalizeBtn = document.getElementById('finalize-button');
         const finalizeLabel = finalizeBtn.querySelector('.button-label');
+        const pdfBtn = document.getElementById('pdf-button');
         const decisionBtn = document.getElementById('decision-button');
         const decisionLabel = decisionBtn.querySelector('.button-label');
         const decisionSelect = document.getElementById('decision-select');
-        const busy = state.dataLoading || state.dashboardLoading || state.finalizeLoading || state.decisionSaving;
+        const busy = state.dataLoading || state.dashboardLoading || state.finalizeLoading || state.decisionSaving || state.pdfDownloading;
         const noCandidate = state.candidates.length === 0 || !select.value;
         select.disabled = busy || noCandidate;
         button.disabled = busy || noCandidate;
@@ -1534,6 +1606,9 @@
         finalizeBtn.disabled = busy || noCandidate;
         finalizeBtn.classList.toggle('is-loading', state.finalizeLoading);
         finalizeLabel.textContent = state.finalizeLoading ? '確定中...' : '採点確定';
+        pdfBtn.disabled = busy || noCandidate || !currentPrintableData();
+        pdfBtn.classList.toggle('is-loading', state.pdfDownloading);
+        pdfBtn.querySelector('.button-label').textContent = state.pdfDownloading ? '作成中...' : 'PDF保存';
         decisionSelect.disabled = busy || noCandidate;
         decisionBtn.disabled = busy || noCandidate;
         decisionBtn.classList.toggle('is-loading', state.decisionSaving);

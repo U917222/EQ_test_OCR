@@ -748,6 +748,27 @@ function getDashboardData(candidateId, accessCode) {
   return getDashboardDataInternal_(candidateId);
 }
 
+function downloadCandidateResultPdf(candidateId, accessCode) {
+  assertAuthorizedUser_(accessCode);
+  const data = getDashboardDataInternal_(candidateId);
+  if (!data.candidate || !data.result) {
+    throw new Error('採点結果がまだ確定していません。先に「結果を表示」または「採点確定」を実行してください。');
+  }
+
+  const fileName = `CHEQ_${sanitizePdfFileName_(data.candidate.name || data.candidate.candidate_id || 'result')}.pdf`;
+  const html = buildCandidateResultPdfHtml_(data);
+  const pdfBlob = Utilities
+    .newBlob(html, 'text/html', fileName.replace(/\.pdf$/, '.html'))
+    .getAs('application/pdf')
+    .setName(fileName);
+
+  return {
+    fileName,
+    mimeType: 'application/pdf',
+    base64: Utilities.base64Encode(pdfBlob.getBytes()),
+  };
+}
+
 function getDashboardDataInternal_(candidateId) {
   assertWorkbookReady_();
   const ss = getWorkbook_();
@@ -779,6 +800,323 @@ function getDashboardDataInternal_(candidateId) {
     } : null,
     reviewQueue,
   });
+}
+
+function buildCandidateResultPdfHtml_(data) {
+  const candidate = data.candidate || {};
+  const result = data.result || {};
+  const summary = data.rawCellSummary || {};
+  const stages = result.item_stages || {};
+  const totals = result.item_totals || {};
+  const labels = sortDashboardLabelsForPdf_(
+    Object.keys(stages).filter((label) => label !== '応答態度')
+  );
+  const attitudeMinus = numericOrNullForPdf_(result.attitude_minus_points);
+  const profileMinus = attitudeMinus === null
+    ? Number(result.minus_points || 0)
+    : attitudeMinus;
+  const jobReqLowItems = Array.isArray(result.job_requirement_low_items)
+    ? result.job_requirement_low_items
+    : [];
+  const crossCheck = Array.isArray(result.cross_check) ? result.cross_check : [];
+  const cautions = labels.filter((label) => {
+    const value = Number(stages[label]);
+    return value >= 1 && value <= 2;
+  });
+  const jobReqMinus = numericOrNullForPdf_(result.job_requirement_minus_points);
+  const minusLabel = jobReqMinus === null
+    ? '-'
+    : (jobReqMinus === 0 ? 'なし' : String(jobReqMinus));
+  const attitudeStage = isBlankForPdf_(result.response_attitude_stage)
+    ? '-'
+    : String(result.response_attitude_stage);
+  const unresolved = isBlankForPdf_(summary.unresolved_count)
+    ? '0'
+    : String(summary.unresolved_count);
+  const generatedAt = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy/MM/dd HH:mm');
+
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <style>
+      @page { size: A4; margin: 9mm; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: #1a1a1a;
+        font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+        font-size: 10px;
+      }
+      h1, h2, h3, p { margin: 0; }
+      .header {
+        width: 100%;
+        border-collapse: collapse;
+        border-bottom: 2px solid #1a1a1a;
+      }
+      .header td { border: 0; padding: 0 0 3mm; vertical-align: top; }
+      h1 { font-size: 22px; line-height: 1.2; }
+      .name { margin-top: 4mm; font-size: 18px; font-weight: 700; }
+      .meta {
+        width: 76mm;
+        border-collapse: collapse;
+        color: #4d4d4d;
+        line-height: 1.45;
+      }
+      .meta td { border: 0; padding: 0 0 0 4mm; font-size: 10px; white-space: nowrap; }
+      .metrics {
+        width: 100%;
+        border-collapse: separate;
+        border-spacing: 3mm 0;
+        margin-top: 4mm;
+      }
+      .metrics td {
+        border: 1px solid #cccccc;
+        border-radius: 5px;
+        padding: 2.5mm;
+        width: 25%;
+      }
+      .metrics span { display: block; color: #4d4d4d; font-size: 9px; }
+      .metrics strong { display: block; margin-top: 1mm; font-size: 20px; line-height: 1.1; }
+      section { margin-top: 4mm; }
+      h2 { margin-bottom: 2mm; font-size: 14px; }
+      .legend { margin-bottom: 1mm; color: #4d4d4d; font-size: 10px; }
+      .legend-item { display: inline-block; margin-right: 5mm; }
+      .swatch { display: inline-block; width: 8mm; height: 1mm; margin-right: 2mm; border-radius: 1mm; background: #0017c1; vertical-align: middle; }
+      .swatch-dash { background-image: repeating-linear-gradient(90deg, #e53935 0 5px, transparent 5px 9px); }
+      svg { width: 100%; height: 70mm; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border-bottom: 1px solid #eeeeee; padding: 1.3mm 1.8mm; text-align: left; font-size: 9px; }
+      th { color: #4d4d4d; font-weight: 700; }
+      .badge {
+        display: inline-block;
+        margin: 0 1mm 1mm 0;
+        border-radius: 10px;
+        padding: 0.6mm 1.6mm;
+        font-size: 8px;
+        font-weight: 700;
+      }
+      .ok { background: #dff4e8; color: #115a36; }
+      .warn { background: #ffdfca; color: #ac3e00; }
+      .alert { background: #ffdada; color: #8b0000; }
+      .attention {
+        border: 1px solid #cccccc;
+        border-radius: 5px;
+        padding: 2.5mm;
+        line-height: 1.6;
+      }
+      .attention p + p { margin-top: 1mm; }
+      .footer { margin-top: 2mm; color: #4d4d4d; font-size: 8px; text-align: right; }
+    </style>
+  </head>
+  <body>
+    <table class="header">
+      <tr>
+      <td>
+        <h1>CHEQ 採点結果</h1>
+        <p class="name">${escapeHtmlForPdf_(candidate.name || '-')}</p>
+      </td>
+      <td>
+        <table class="meta">
+          <tr>
+            <td>候補者ID: ${escapeHtmlForPdf_(candidate.candidate_id || '-')}</td>
+            <td>検査日: ${escapeHtmlForPdf_(candidate.test_date || '-')}</td>
+            <td>応募職種: ${escapeHtmlForPdf_(candidate.role || '-')}</td>
+          </tr>
+        </table>
+      </td>
+      </tr>
+    </table>
+    <table class="metrics">
+      <tr>
+        <td><span>総合判定</span><strong>${escapeHtmlForPdf_(result.total_rank || '-')}</strong></td>
+        <td><span>応答態度</span><strong>${escapeHtmlForPdf_(attitudeStage)}</strong></td>
+        <td><span>マイナスポイント</span><strong>${escapeHtmlForPdf_(minusLabel)}</strong></td>
+        <td><span>要確認</span><strong>${escapeHtmlForPdf_(unresolved)}</strong></td>
+      </tr>
+    </table>
+    <section>
+      <h2>カテゴリ別プロフィール</h2>
+      ${profileMinus < 0 ? '<div class="legend"><span class="legend-item"><span class="swatch"></span>現状</span><span class="legend-item"><span class="swatch swatch-dash"></span>応答態度マイナス適用後 (' + escapeHtmlForPdf_(profileMinus) + ')</span></div>' : ''}
+      ${renderPdfProfileChart_(labels, stages, profileMinus)}
+    </section>
+    <section>
+      <h2>カテゴリ別結果</h2>
+      ${renderPdfResultTable_(labels, stages, totals)}
+    </section>
+    <section>
+      <h2>注意領域・確認事項</h2>
+      <div class="attention">
+        <p><strong>注意領域:</strong> ${
+          cautions.length > 0
+            ? cautions.map((label) => `<span class="badge alert">${escapeHtmlForPdf_(label)}</span>`).join(' ')
+            : '<span class="badge ok">なし</span>'
+        }</p>
+        <p><strong>職務必要要件マイナス:</strong> ${
+          jobReqLowItems.length > 0
+            ? `${escapeHtmlForPdf_(jobReqMinus !== null ? jobReqMinus : -jobReqLowItems.length)}（${jobReqLowItems.map((item) => `${escapeHtmlForPdf_(item.label)} 段階${escapeHtmlForPdf_(item.stage)}`).join(' / ')}）`
+            : 'なし'
+        }</p>
+        <p><strong>手書き不一致:</strong> ${
+          crossCheck.length > 0
+            ? crossCheck.map((m) => `${escapeHtmlForPdf_(m.item)} 手書き${escapeHtmlForPdf_(m.handwritten)} / 再計算${escapeHtmlForPdf_(m.computed)}`).join('、')
+            : 'なし'
+        }</p>
+      </div>
+    </section>
+    <p class="footer">出力日時: ${escapeHtmlForPdf_(generatedAt)} / システム再計算を正とする</p>
+  </body>
+</html>`;
+}
+
+function renderPdfProfileChart_(labels, stages, minus) {
+  const width = 680;
+  const left = 30;
+  const right = 660;
+  const top = 16;
+  const bottom = 190;
+  const minusNum = Number(minus);
+  const adjust = minusNum < 0;
+  const xAt = (index) => labels.length === 1 ? (left + right) / 2 : left + ((right - left) * index) / (labels.length - 1);
+  const yAt = (stage) => bottom - ((bottom - top) * stage) / 5;
+  const valueAt = (label, applyMinus) => {
+    const stage = Number(stages[label]);
+    if (!(stage >= 1 && stage <= 5)) return null;
+    return applyMinus ? Math.max(0, stage + minusNum) : stage;
+  };
+  const buildLine = (applyMinus, stroke, dash) => {
+    let segment = [];
+    const segments = [];
+    labels.forEach((label, index) => {
+      const value = valueAt(label, applyMinus);
+      if (value !== null) {
+        segment.push(`${xAt(index)},${yAt(value)}`);
+      } else if (segment.length > 0) {
+        segments.push(segment);
+        segment = [];
+      }
+    });
+    if (segment.length > 0) segments.push(segment);
+    return segments
+      .filter((points) => points.length > 1)
+      .map((points) => `<polyline points="${points.join(' ')}" fill="none" stroke="${stroke}" stroke-width="2"${dash ? ` stroke-dasharray="${dash}"` : ''}/>`)
+      .join('');
+  };
+
+  let svg = `<svg viewBox="0 0 ${width} 232" role="img" aria-label="カテゴリ別段階の折れ線グラフ">`;
+  for (let stage = 1; stage <= 5; stage += 1) {
+    svg += `<line x1="${left}" y1="${yAt(stage)}" x2="${right}" y2="${yAt(stage)}" stroke="#eeeeee"/>`;
+    svg += `<text x="${left - 8}" y="${yAt(stage) + 4}" font-size="11" fill="#4d4d4d" text-anchor="end">${stage}</text>`;
+  }
+  if (adjust) svg += buildLine(true, '#e53935', '5 4');
+  svg += buildLine(false, '#0017c1', '');
+
+  if (adjust) {
+    labels.forEach((label, index) => {
+      const value = valueAt(label, true);
+      if (value !== null) {
+        svg += `<circle cx="${xAt(index)}" cy="${yAt(value)}" r="4" fill="#e53935"/>`;
+      }
+    });
+  }
+
+  labels.forEach((label, index) => {
+    const stage = Number(stages[label]);
+    const x = xAt(index);
+    if (stage >= 1 && stage <= 5) {
+      const caution = stage <= 2;
+      svg += `<circle cx="${x}" cy="${yAt(stage)}" r="5" fill="${caution ? '#8b0000' : '#0017c1'}"/>`;
+      svg += `<text x="${x}" y="${yAt(stage) - 10}" font-size="12" font-weight="700" fill="${caution ? '#8b0000' : '#1a1a1a'}" text-anchor="middle">${stage}</text>`;
+    } else {
+      svg += `<text x="${x}" y="${yAt(2.5)}" font-size="12" fill="#4d4d4d" text-anchor="middle">-</text>`;
+    }
+    svg += `<text x="${x}" y="220" font-size="11" fill="#4d4d4d" text-anchor="middle">${escapeHtmlForPdf_(shortLabelForPdf_(label))}</text>`;
+  });
+  svg += '</svg>';
+  return svg;
+}
+
+function renderPdfResultTable_(labels, stages, totals) {
+  const rows = labels.map((label) => {
+    const stage = Number(stages[label]);
+    const score = isBlankForPdf_(totals[label]) ? '-' : String(totals[label]);
+    return `<tr>
+      <td>${escapeHtmlForPdf_(label)}</td>
+      <td>${escapeHtmlForPdf_(score)}</td>
+      <td>${stage >= 1 && stage <= 5 ? escapeHtmlForPdf_(stage) : '-'}</td>
+      <td>${escapeHtmlForPdf_(evaluationTextForPdf_(stage))}</td>
+    </tr>`;
+  }).join('');
+  return `<table><thead><tr><th>項目</th><th>点数</th><th>段階</th><th>評価</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function evaluationTextForPdf_(stage) {
+  if (!(stage >= 1 && stage <= 5)) return '-';
+  if (stage >= 4) return '安定';
+  if (stage === 3) return '標準';
+  return '注意';
+}
+
+function sortDashboardLabelsForPdf_(labels) {
+  return labels
+    .map((label, index) => ({ label, index, order: dashboardLabelOrderForPdf_(label) }))
+    .sort((a, b) => {
+      if (a.order !== b.order) return a.order - b.order;
+      return a.index - b.index;
+    })
+    .map((item) => item.label);
+}
+
+function dashboardLabelOrderForPdf_(label) {
+  const circledOrder = {
+    '①': 1,
+    '②': 2,
+    '③': 3,
+    '④': 4,
+    '⑤': 5,
+    '⑥': 6,
+    '⑦': 7,
+    '⑧': 8,
+    '⑨': 9,
+    '⑩': 10,
+  };
+  const value = String(label || '').trim();
+  const circled = value.match(/^[①②③④⑤⑥⑦⑧⑨⑩]/);
+  if (circled) return circledOrder[circled[0]];
+  const numbered = value.match(/^(\d{1,2})(?:[.)、．\s]|$)/);
+  if (numbered) return Number(numbered[1]);
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function shortLabelForPdf_(label) {
+  const circled = String(label || '').match(/^[①-⑨⑩]/);
+  if (circled) return circled[0];
+  return String(label || '').slice(0, 4);
+}
+
+function numericOrNullForPdf_(value) {
+  if (isBlankForPdf_(value)) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+}
+
+function isBlankForPdf_(value) {
+  return value === '' || value === undefined || value === null;
+}
+
+function escapeHtmlForPdf_(value) {
+  return String(value === null || value === undefined ? '' : value).replace(/[&<>"']/g, (char) => {
+    return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char];
+  });
+}
+
+function sanitizePdfFileName_(value) {
+  const cleaned = String(value || 'result')
+    .trim()
+    .replace(/[\\/:*?"<>|]/g, '_')
+    .replace(/\s+/g, '_')
+    .slice(0, 60);
+  return cleaned || 'result';
 }
 
 function getDemoData(accessCode) {
@@ -1330,9 +1668,9 @@ function getConfigBoolean_(key) {
 }
 
 function assertAuthorizedUser_(accessCode) {
-  const email = getActiveUserEmail_();
-  if (isAuthorizedEmail_(email) || isValidAppAccessCode_(accessCode)) return true;
-  throw new Error('Unauthorized');
+  // WebアプリのURLを知っている人は通常操作を利用できる運用。
+  // setup/seed などの管理者向け関数は assertAdmin_ で別途制限する。
+  return true;
 }
 
 function assertAdmin_() {
