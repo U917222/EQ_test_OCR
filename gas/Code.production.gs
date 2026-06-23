@@ -641,7 +641,7 @@ function calculateCandidateResultInternal_(candidateId) {
       throw new Error(`Undecided cells remain: ${scored.issues.map((i) => i.cell).join(', ')}`);
     }
 
-    // RankRules は項目ラベル(①〜⑨/応答態度)で条件を書くため、ラベルキーに変換する
+    // RankRules は項目ラベル(①〜④/応答態度)で条件を書くため、ラベルキーに変換する
     const stagesByLabel = {};
     const totalsByLabel = {};
     itemMaster.forEach((item) => {
@@ -1558,11 +1558,13 @@ function evaluateRankCondition_(condition, categoryStages) {
   return false;
 }
 
-// 総合ランクの集計対象段階。応答態度は「段階が高いほど悪い」逆スケールのため除外する
+// 総合ランクの集計対象段階は①〜④のみ。
+// ⑤〜⑨は職務必要要件マイナスとして扱い、総合ランクの低段階判定・平均には含めない。
+// 応答態度は「段階が高いほど悪い」逆スケールのため除外する。
 // （応答態度を条件にしたい場合は {"category":"応答態度","gte":4} のように明示指定する）
 function rankStageValues_(categoryStages) {
   return Object.keys(categoryStages)
-    .filter((label) => label !== '応答態度')
+    .filter((label) => /^[①②③④]/.test(label))
     .map((label) => Number(categoryStages[label]))
     .filter((value) => value > 0);
 }
