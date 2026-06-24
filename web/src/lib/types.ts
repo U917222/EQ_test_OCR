@@ -98,6 +98,9 @@ export type GetCellsResponse = {
   cells: ScoreCell[];
   reviewQueue: CellKey[];
   imageLinks: ImageLinks;
+  // 各要確認セルの手書き切り抜き画像 (URL または data:image/... )。getCells の
+  // imageLinks に混在する sNN キーを分離したもの。存在しないセルは未設定。
+  cellImages: Partial<Record<CellKey, string>>;
 };
 
 export type RegisterCandidatePayload = {
@@ -167,6 +170,91 @@ export type DashboardMonth = {
   rejected: number;
   needsReview: number;
   passRate: number;
+};
+
+// ---- 総合評定（面接評価） ----
+
+export type EvaluationItemKey =
+  | "knowledge"
+  | "adaptability"
+  | "personality"
+  | "interest"
+  | "potential"
+  | "aptitude";
+
+export type EvaluationScore = 1 | 2 | 3 | 4 | 5;
+
+export type EvaluationItemMaster = {
+  key: EvaluationItemKey;
+  label: string;
+  description: string;
+  displayOrder: number;
+};
+
+export type EvaluationItem = {
+  key: EvaluationItemKey;
+  score: EvaluationScore;
+  comment: string;
+};
+
+export type Evaluation = {
+  evaluationId: string;
+  candidateId: string;
+  evaluatorName: string;
+  evalDate: string;
+  jobRole: string;
+  totalScore: number;
+  overallComment: string;
+  items: EvaluationItem[];
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type EvaluatorOption = {
+  evaluatorId: string;
+  name: string;
+};
+
+export type EvaluationItemAverage = {
+  key: EvaluationItemKey;
+  label: string;
+  average: number | null;
+};
+
+export type EvaluationSummary = {
+  count: number;
+  averageTotal: number | null;
+  itemAverages: EvaluationItemAverage[];
+};
+
+export type ListEvaluationMetaResponse = {
+  items: EvaluationItemMaster[];
+  evaluators: EvaluatorOption[];
+};
+
+export type ListEvaluationsResponse = {
+  evaluations: Evaluation[];
+};
+
+export type GetEvaluationResponse = {
+  evaluation: Evaluation;
+};
+
+export type SaveEvaluationPayload = {
+  candidateId: string;
+  evaluationId?: string;
+  evaluatorName: string;
+  evalDate: string;
+  jobRole: string;
+  overallComment: string;
+  items: Array<{ key: EvaluationItemKey; score: number; comment: string }>;
+  operationId: string;
+};
+
+export type RegisterEvaluatorPayload = {
+  name: string;
+  operationId: string;
 };
 
 export type DashboardResponse = {

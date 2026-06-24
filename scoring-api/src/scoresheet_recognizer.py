@@ -42,6 +42,7 @@ TARGET_RING_DELTA = 0.13   # この差分以上で○濃度スコアを満点と
 MULTI_RING_DELTA = 0.05    # 2位の差分がこれ以上なら複数○とみなす
 AMBIGUOUS_MARGIN = 0.07    # 1位と2位の差の正規化幅
 REVIEW_CONFIDENCE = 0.80   # これ未満のセルはレビュー画像を切り出す
+REVIEW_CROP_MAX_WIDTH = 240  # レビュー切り抜きの横幅上限 (data-URI肥大化を抑える)
 ANNULUS_INNER = 0.50       # 環状領域の内縁 (スロット半径比。印字数字の中心部を除外)
 ANNULUS_OUTER = 1.10       # 環状領域の外縁 (セル境界を少し越えて○の線を拾う)
 
@@ -257,5 +258,10 @@ def _crop_question(gray: np.ndarray, qnum_box, option_boxes) -> bytes:
     y0 = max(0, min(b[1] for b in boxes) - 8)
     x1 = min(gray.shape[1], max(b[0] + b[2] for b in boxes) + 8)
     y1 = min(gray.shape[0], max(b[1] + b[3] for b in boxes) + 8)
-    ok, encoded = cv2.imencode(".png", gray[y0:y1, x0:x1])
+    crop = gray[y0:y1, x0:x1]
+    if crop.shape[1] > REVIEW_CROP_MAX_WIDTH:
+        scale = REVIEW_CROP_MAX_WIDTH / crop.shape[1]
+        new_size = (REVIEW_CROP_MAX_WIDTH, max(1, int(round(crop.shape[0] * scale))))
+        crop = cv2.resize(crop, new_size, interpolation=cv2.INTER_AREA)
+    ok, encoded = cv2.imencode(".png", crop)
     return encoded.tobytes() if ok else b""

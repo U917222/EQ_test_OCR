@@ -1,20 +1,42 @@
-import { KeyboardEvent, useEffect, useMemo, useState } from "react";
+import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle2, Loader2, Save, ZoomIn, ZoomOut } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  ImageOff,
+  Loader2,
+  Save,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { normalizeGetCellsResponse } from "@/lib/api-normalizers";
 import { useAuth } from "@/lib/auth";
 import { confidenceTone } from "@/lib/labels";
 import { isApiError, postApi } from "@/lib/api";
 import { newOperationId } from "@/lib/operation";
+import {
+  applyEdit,
+  applyKeep,
+  bulkKeepRemaining,
+  clearReviewState,
+  nextPending,
+  reduceReviewKey,
+  reviewProgress,
+  type CellReviewState,
+  type ReviewStates,
+} from "@/lib/review";
 import { CellKey, SaveCellsPayload, ScoreCell } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -23,9 +45,13 @@ export default function ReviewPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { can } = useAuth();
+  const containerRef = useRef<HTMLDivElement>(null);
   const [activeKey, setActiveKey] = useState<CellKey | null>(null);
   const [edited, setEdited] = useState<Record<CellKey, number | null>>({});
-  const [confirmed, setConfirmed] = useState<Set<CellKey>>(new Set());
+  const [states, setStates] = useState<ReviewStates>({});
+  const [showAllCells, setShowAllCells] = useState(false);
+  const [showReference, setShowReference] = useState(false);
+  const [pageIdx, setPageIdx] = useState(0);
   const [zoom, setZoom] = useState(1);
 
   const query = useQuery({
@@ -41,19 +67,50 @@ export default function ReviewPage() {
 
   useEffect(() => {
     if (!query.data) return;
-    const values = Object.fromEntries(
-      query.data.cells.map((cell) => [cell.key, cell.value ?? cell.detectedValue ?? null]),
-    ) as Record<CellKey, number | null>;
-    setEdited(values);
-    setConfirmed(new Set(query.data.cells.filter((cell) => cell.resolved).map((cell) => cell.key)));
-    setActiveKey(query.data.reviewQueue[0] ?? query.data.cells[0]?.key ?? null);
+    const { cells: loadedCells, reviewQueue, cellImages } = query.data;
+    setEdited(
+      Object.fromEntries(loadedCells.map((cell) => [cell.key, cell.value ?? cell.detectedValue ?? null])) as Record<
+        CellKey,
+        number | null
+      >,
+    );
+    const initialStates: ReviewStates = {};
+    for (const cell of loadedCells) initialStates[cell.key] = cell.resolved ? "kept" : "pending";
+    for (const key of reviewQueue) initialStates[key] = "pending";
+    setStates(initialStates);
+    setActiveKey(reviewQueue[0] ?? loadedCells[0]?.key ?? null);
+    // 切り抜き画像が1枚も無いとき(手入力経路など)は参照用紙を最初から開く
+    setShowReference(!reviewQueue.some((key) => cellImages[key]));
+    setPageIdx(0);
+    // クリック前でもキーボード操作が効くようコンテナへフォーカスを当てる
+    requestAnimationFrame(() => containerRef.current?.focus());
   }, [query.data]);
 
   const cells = query.data?.cells ?? [];
   const queue = query.data?.reviewQueue ?? [];
-  const activeCell = cells.find((cell) => cell.key === activeKey) ?? null;
-  const resolvedCount = queue.filter((key) => confirmed.has(key)).length;
-  const progress = queue.length ? Math.round((resolvedCount / queue.length) * 100) : 100;
+  const cellImages = query.data?.cellImages ?? {};
+  const imageLinks = query.data?.imageLinks ?? {};
+
+  const cellByKey = useMemo(() => new Map(cells.map((cell) => [cell.key, cell])), [cells]);
+  const allKeys = useMemo(
+    () => [...cells].map((cell) => cell.key).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1))),
+    [cells],
+  );
+  const orderKeys = showAllCells ? allKeys : queue;
+  const progress = reviewProgress(queue, states);
+
+  // 数字ボタンの候補値: 実データの検出値から導出し、基本の 0〜3 を必ず含める。
+  const quickValues = useMemo(() => {
+    const values = new Set<number>([0, 1, 2, 3]);
+    for (const cell of cells) {
+      if (typeof cell.detectedValue === "number") values.add(cell.detectedValue);
+      if (typeof cell.value === "number") values.add(cell.value);
+    }
+    return Array.from(values)
+      .filter((value) => value >= 0 && value <= 9)
+      .sort((a, b) => a - b);
+  }, [cells]);
+
   const buildPayloadCells = () =>
     cells.reduce<Record<CellKey, number | null>>((acc, cell) => {
       acc[cell.key] = edited[cell.key] ?? null;
@@ -88,41 +145,61 @@ export default function ReviewPage() {
     onError: (error) => toast.error(isApiError(error) ? error.message : "採点を確定できませんでした"),
   });
 
-  const orderedKeys = useMemo(() => (queue.length ? queue : cells.map((cell) => cell.key)), [cells, queue]);
-
-  const move = (direction: 1 | -1) => {
-    if (!activeKey || orderedKeys.length === 0) return;
-    const index = orderedKeys.indexOf(activeKey);
-    const next = Math.min(Math.max(index + direction, 0), orderedKeys.length - 1);
-    setActiveKey(orderedKeys[next]);
+  const advance = (fromKey: CellKey, nextStates: ReviewStates) => {
+    setActiveKey(nextPending(orderKeys, nextStates, fromKey) ?? fromKey);
   };
 
-  const confirmAndNext = () => {
-    if (!activeKey) return;
-    setConfirmed((current) => new Set(current).add(activeKey));
-    move(1);
+  const keepCell = (key: CellKey) => {
+    const nextStates = applyKeep(states, key);
+    setStates(nextStates);
+    advance(key, nextStates);
+  };
+
+  const pickValue = (key: CellKey, value: number) => {
+    setEdited((current) => ({ ...current, [key]: value }));
+    const nextStates = applyEdit(states, key);
+    setStates(nextStates);
+    advance(key, nextStates);
+  };
+
+  // 数値入力(直接タイプ)は値だけ反映し、カードは進めない。
+  const editValue = (key: CellKey, value: number | null) => {
+    setEdited((current) => ({ ...current, [key]: value }));
+    setStates((current) => (value === null ? clearReviewState(current, key) : applyEdit(current, key)));
+  };
+
+  const clearCell = (key: CellKey) => {
+    setEdited((current) => ({ ...current, [key]: null }));
+    setStates((current) => clearReviewState(current, key));
+  };
+
+  const move = (direction: 1 | -1) => {
+    if (!activeKey || orderKeys.length === 0) return;
+    const index = orderKeys.indexOf(activeKey);
+    if (index < 0) {
+      setActiveKey(orderKeys[0]);
+      return;
+    }
+    const next = Math.min(Math.max(index + direction, 0), orderKeys.length - 1);
+    setActiveKey(orderKeys[next]);
+  };
+
+  const keepRemaining = () => {
+    const nextStates = bulkKeepRemaining(queue, states);
+    setStates(nextStates);
+    toast.success("残りの要確認セルをOCRのまま確定にしました");
   };
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === "ArrowDown") {
-      event.preventDefault();
-      move(1);
-      return;
-    }
-    if (event.key === "ArrowUp") {
-      event.preventDefault();
-      move(-1);
-      return;
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      confirmAndNext();
-      return;
-    }
-    if (/^[0-9]$/.test(event.key) && activeKey && event.target instanceof HTMLElement && event.target.tagName !== "INPUT") {
-      setEdited((current) => ({ ...current, [activeKey]: Number(event.key) }));
-      setConfirmed((current) => new Set(current).add(activeKey));
-    }
+    if (!activeKey) return;
+    const inInput = event.target instanceof HTMLElement && event.target.tagName === "INPUT";
+    const action = reduceReviewKey(event.key, { inInput });
+    if (action.type === "none") return;
+    event.preventDefault();
+    if (action.type === "move") move(action.direction);
+    else if (action.type === "keep") keepCell(activeKey);
+    else if (action.type === "setValue") pickValue(activeKey, action.value);
+    else if (action.type === "clear") clearCell(activeKey);
   };
 
   const save = () => {
@@ -135,7 +212,7 @@ export default function ReviewPage() {
 
   if (query.isLoading) {
     return (
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Skeleton className="h-[640px]" />
         <Skeleton className="h-[640px]" />
       </div>
@@ -156,16 +233,19 @@ export default function ReviewPage() {
     );
   }
 
-  const imageLinks = query.data?.imageLinks ?? {};
-  const documentUrl = imageLinks.preview ?? imageLinks.original;
-  const isPdf = isPdfDocument(imageLinks.mimeType, documentUrl);
+  const pages = imageLinks.pages?.length ? imageLinks.pages : [imageLinks.preview ?? imageLinks.original].filter(Boolean) as string[];
+  const currentDoc = pages[pageIdx] ?? pages[0];
+  const docIsPdf = isPdfDocument(imageLinks.mimeType, currentDoc);
+  const allDone = progress.total > 0 && progress.resolved >= progress.total;
 
   return (
-    <div className="space-y-5" onKeyDown={handleKeyDown} tabIndex={-1}>
+    <div ref={containerRef} className="space-y-5 outline-none" onKeyDown={handleKeyDown} tabIndex={-1}>
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-2xl font-semibold tracking-normal">採点レビュー</h1>
-          <p className="mt-1 text-sm text-slate-600">要確認セルを確認し、必要に応じて検出値を修正します。</p>
+          <p className="mt-1 text-sm text-slate-600">
+            手書きの切り抜きを見ながら、要確認セルを1枚ずつ確認・修正します。
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Button asChild variant="outline">
@@ -194,54 +274,134 @@ export default function ReviewPage() {
       </div>
 
       <Card>
-        <CardContent className="p-4">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm font-medium">
-              解決 {resolvedCount} / 全 {queue.length}
+        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-sm font-medium">
+                {allDone ? "要確認セルはすべて確認済みです" : `要確認 残り ${progress.total - progress.resolved} 件`}
+                <span className="ml-2 text-slate-500">
+                  ({progress.resolved} / {progress.total})
+                </span>
+              </span>
+              <span className="hidden text-xs text-slate-500 sm:inline">
+                数字キー=修正して次へ / Enter=このままOK / ↑↓=移動
+              </span>
             </div>
-            <div className="text-sm text-slate-600">↑↓で移動、Enterで確定、数字キーで入力</div>
+            <Progress value={progress.percent} className="mt-3" />
           </div>
-          <Progress value={progress} className="mt-3" />
+          <Button
+            variant="outline"
+            onClick={keepRemaining}
+            disabled={allDone || progress.total === 0}
+            className="shrink-0"
+          >
+            <Check className="h-4 w-4" />
+            残りはOCRのまま確定
+          </Button>
         </CardContent>
       </Card>
 
-      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card className="overflow-hidden">
-          <CardHeader className="flex flex-row items-start justify-between gap-3">
-            <div>
-              <CardTitle>採点用紙ビューア</CardTitle>
-              <CardDescription>
-                現在セル: {activeCell?.label ?? activeCell?.key ?? "-"}
-              </CardDescription>
-            </div>
-            {!isPdf ? (
-              <div className="flex gap-2">
-                <Button variant="outline" size="icon" onClick={() => setZoom((current) => Math.max(0.75, current - 0.1))} aria-label="縮小">
-                  <ZoomOut className="h-4 w-4" />
-                </Button>
-                <Button variant="outline" size="icon" onClick={() => setZoom((current) => Math.min(1.8, current + 0.1))} aria-label="拡大">
-                  <ZoomIn className="h-4 w-4" />
-                </Button>
-              </div>
-            ) : null}
-          </CardHeader>
+      <div className="flex items-center justify-between">
+        <h2 className="text-sm font-semibold text-slate-700">
+          {showAllCells ? "全80セル" : "要確認セル"}
+        </h2>
+        <Button variant="ghost" size="sm" onClick={() => setShowAllCells((value) => !value)}>
+          {showAllCells ? "要確認だけ表示" : "全セルを表示"}
+        </Button>
+      </div>
+
+      {orderKeys.length === 0 ? (
+        <Card>
+          <CardContent className="flex min-h-40 flex-col items-center justify-center p-6 text-center text-sm text-slate-600">
+            要確認セルはありません。そのまま採点を確定できます。
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2 xl:grid-cols-3">
+          {orderKeys.map((key) => {
+            const cell = cellByKey.get(key);
+            if (!cell) return null;
+            return (
+              <CellReviewCard
+                key={key}
+                cell={cell}
+                state={states[key] ?? "pending"}
+                value={edited[key] ?? null}
+                cropUrl={cellImages[key]}
+                quickValues={quickValues}
+                active={key === activeKey}
+                onActivate={() => setActiveKey(key)}
+                onKeep={() => keepCell(key)}
+                onPick={(value) => pickValue(key, value)}
+                onEdit={(value) => editValue(key, value)}
+                onOpenReference={() => {
+                  setShowReference(true);
+                  setActiveKey(key);
+                }}
+              />
+            );
+          })}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileText className="h-4 w-4 text-slate-500" />
+            採点用紙(参照)
+          </CardTitle>
+          <Button variant="ghost" size="sm" onClick={() => setShowReference((value) => !value)}>
+            {showReference ? "閉じる" : "開く"}
+          </Button>
+        </CardHeader>
+        {showReference ? (
           <CardContent>
-            <div className="relative h-[620px] overflow-auto rounded-lg border bg-slate-100 p-4">
-              {documentUrl ? (
-                isPdf ? (
-                  <iframe
-                    src={documentUrl}
-                    title="採点用紙PDF"
-                    className="h-[588px] w-full rounded-lg bg-white shadow-sm"
-                  />
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              {pages.length > 1 ? (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setPageIdx((value) => Math.max(0, value - 1))}
+                    disabled={pageIdx === 0}
+                    aria-label="前のページ"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-slate-600">
+                    {pageIdx + 1} / {pages.length} ページ
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setPageIdx((value) => Math.min(pages.length - 1, value + 1))}
+                    disabled={pageIdx >= pages.length - 1}
+                    aria-label="次のページ"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : (
+                <span />
+              )}
+              {currentDoc && !docIsPdf ? (
+                <div className="flex gap-2">
+                  <Button variant="outline" size="icon" onClick={() => setZoom((value) => Math.max(0.75, value - 0.1))} aria-label="縮小">
+                    <ZoomOut className="h-4 w-4" />
+                  </Button>
+                  <Button variant="outline" size="icon" onClick={() => setZoom((value) => Math.min(1.8, value + 0.1))} aria-label="拡大">
+                    <ZoomIn className="h-4 w-4" />
+                  </Button>
+                </div>
+              ) : null}
+            </div>
+            <div className="relative h-[560px] overflow-auto rounded-lg border bg-slate-100 p-4">
+              {currentDoc ? (
+                docIsPdf ? (
+                  <iframe src={currentDoc} title="採点用紙PDF" className="h-[528px] w-full rounded-lg bg-white shadow-sm" />
                 ) : (
-                  <div className="relative mx-auto w-full max-w-3xl origin-top transition-transform" style={{ transform: `scale(${zoom})` }}>
-                    <img
-                      src={documentUrl}
-                      alt="採点用紙"
-                      className="w-full rounded-lg bg-white shadow-sm"
-                    />
-                    {activeCell?.bbox ? <CellHighlight cell={activeCell} /> : null}
+                  <div className="mx-auto w-full max-w-3xl origin-top transition-transform" style={{ transform: `scale(${zoom})` }}>
+                    <img src={currentDoc} alt="採点用紙" className="w-full rounded-lg bg-white shadow-sm" />
                   </div>
                 )
               ) : (
@@ -249,118 +409,122 @@ export default function ReviewPage() {
                   採点用紙画像はまだありません
                 </div>
               )}
-              </div>
+            </div>
           </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>セル確認</CardTitle>
-            <CardDescription>低信頼セルを優先して修正します。</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Tabs defaultValue="queue">
-              <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="queue">要確認</TabsTrigger>
-                <TabsTrigger value="heatmap">80セル</TabsTrigger>
-              </TabsList>
-              <TabsContent value="queue" className="max-h-[620px] overflow-auto pr-1 scrollbar-stable">
-                <div className="space-y-2">
-                  {(queue.length ? queue : cells.map((cell) => cell.key)).map((key) => {
-                    const cell = cells.find((target) => target.key === key);
-                    if (!cell) return null;
-                    return (
-                      <CellEditorRow
-                        key={cell.key}
-                        cell={cell}
-                        active={cell.key === activeKey}
-                        confirmed={confirmed.has(cell.key)}
-                        value={edited[cell.key] ?? null}
-                        onFocus={() => setActiveKey(cell.key)}
-                        onChange={(value) => {
-                          setEdited((current) => ({ ...current, [cell.key]: value }));
-                          setConfirmed((current) => new Set(current).add(cell.key));
-                        }}
-                      />
-                    );
-                  })}
-                </div>
-              </TabsContent>
-              <TabsContent value="heatmap">
-                <div className="grid grid-cols-8 gap-2">
-                  {cells.map((cell) => (
-                    <button
-                      type="button"
-                      key={cell.key}
-                      onClick={() => setActiveKey(cell.key)}
-                      className={cn(
-                        "aspect-square rounded-lg border text-xs font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-ring",
-                        heatmapClass(cell.confidence),
-                        cell.key === activeKey && "ring-2 ring-indigo-600 ring-offset-2",
-                      )}
-                      aria-label={`${cell.key} 信頼度 ${Math.round(cell.confidence * 100)}%`}
-                    >
-                      {cell.key.replace("s", "")}
-                    </button>
-                  ))}
-                </div>
-              </TabsContent>
-            </Tabs>
-          </CardContent>
-        </Card>
-      </div>
+        ) : null}
+      </Card>
     </div>
   );
 }
 
-function CellEditorRow({
+const STATE_CHIP: Record<CellReviewState, { label: string; variant: "warning" | "neutral" | "info" }> = {
+  pending: { label: "未確認", variant: "warning" },
+  kept: { label: "OCRのまま", variant: "neutral" },
+  edited: { label: "修正済み", variant: "info" },
+};
+
+function CellReviewCard({
   cell,
-  active,
-  confirmed,
+  state,
   value,
-  onFocus,
-  onChange,
+  cropUrl,
+  quickValues,
+  active,
+  onActivate,
+  onKeep,
+  onPick,
+  onEdit,
+  onOpenReference,
 }: {
   cell: ScoreCell;
-  active: boolean;
-  confirmed: boolean;
+  state: CellReviewState;
   value: number | null;
-  onFocus: () => void;
-  onChange: (value: number | null) => void;
+  cropUrl?: string;
+  quickValues: number[];
+  active: boolean;
+  onActivate: () => void;
+  onKeep: () => void;
+  onPick: (value: number) => void;
+  onEdit: (value: number | null) => void;
+  onOpenReference: () => void;
 }) {
-  const tone = confidenceTone(cell.confidence);
+  const ref = useRef<HTMLDivElement>(null);
+  const chip = STATE_CHIP[state];
+
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [active]);
+
   return (
     <div
+      ref={ref}
+      onMouseDown={onActivate}
       className={cn(
-        "grid grid-cols-[1fr_112px] gap-3 rounded-lg border p-3 transition-colors",
-        active && "border-indigo-500 bg-indigo-50",
+        "flex flex-col gap-3 rounded-lg border bg-white p-3 transition-colors",
+        active ? "border-indigo-500 ring-2 ring-indigo-200" : "border-slate-200",
       )}
     >
-      <button type="button" className="min-w-0 text-left" onClick={onFocus}>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="font-medium">{cell.label ?? cell.key}</span>
-          <ConfidenceBadge confidence={cell.confidence} />
-          {confirmed ? <Badge variant="success">解決済み</Badge> : null}
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-medium">{cell.label ?? cell.key}</span>
+        <div className="flex items-center gap-1.5">
+          {cell.confidence < 1 ? <ConfidenceBadge confidence={cell.confidence} /> : null}
+          <Badge variant={chip.variant}>{chip.label}</Badge>
         </div>
-        <div className="mt-1 text-sm text-slate-600">
-          検出値: {cell.detectedValue ?? "-"} / 行 {cell.row} 列 {cell.col}
+      </div>
+
+      <div className="grid grid-cols-[96px_1fr] gap-3">
+        <div className="flex h-24 items-center justify-center overflow-hidden rounded-md border bg-slate-50">
+          {cropUrl ? (
+            <img src={cropUrl} alt={`${cell.key} の手書き`} className="max-h-full max-w-full object-contain" />
+          ) : (
+            <button
+              type="button"
+              onClick={onOpenReference}
+              className="flex flex-col items-center gap-1 text-xs text-slate-400 hover:text-slate-600"
+            >
+              <ImageOff className="h-5 w-5" />
+              用紙で確認
+            </button>
+          )}
         </div>
-      </button>
-      <Input
-        type="number"
-        min={0}
-        inputMode="numeric"
-        value={value ?? ""}
-        onFocus={onFocus}
-        onChange={(event) => onChange(event.target.value === "" ? null : Number(event.target.value))}
-        className={cn(
-          "text-right font-semibold",
-          tone === "red" && "border-red-300",
-          tone === "amber" && "border-amber-300",
-          tone === "emerald" && "border-emerald-300",
-        )}
-        aria-label={`${cell.key} の値`}
-      />
+
+        <div className="min-w-0">
+          <div className="text-xs text-slate-500">OCR推測</div>
+          <div className="text-2xl font-semibold tabular-nums">{cell.detectedValue ?? "—"}</div>
+          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+            {quickValues.map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                onClick={() => onPick(candidate)}
+                className={cn(
+                  "h-8 w-8 rounded-md border text-sm font-semibold tabular-nums transition-colors",
+                  value === candidate
+                    ? "border-indigo-500 bg-indigo-600 text-white"
+                    : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+                )}
+                aria-label={`値を ${candidate} にする`}
+              >
+                {candidate}
+              </button>
+            ))}
+            <Input
+              type="number"
+              min={0}
+              inputMode="numeric"
+              value={value ?? ""}
+              onChange={(event) => onEdit(event.target.value === "" ? null : Number(event.target.value))}
+              className="h-8 w-16 text-right font-semibold"
+              aria-label={`${cell.key} の値`}
+            />
+          </div>
+        </div>
+      </div>
+
+      <Button variant={state === "pending" ? "default" : "outline"} size="sm" onClick={onKeep} className="self-end">
+        <Check className="h-4 w-4" />
+        この値でOK
+      </Button>
     </div>
   );
 }
@@ -371,33 +535,8 @@ function ConfidenceBadge({ confidence }: { confidence: number }) {
   return <Badge variant={variant}>{Math.round(confidence * 100)}%</Badge>;
 }
 
-function heatmapClass(confidence: number) {
-  const tone = confidenceTone(confidence);
-  if (tone === "emerald") return "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100";
-  if (tone === "amber") return "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100";
-  return "border-red-200 bg-red-50 text-red-800 hover:bg-red-100";
-}
-
 function isPdfDocument(mimeType?: string, url?: string) {
   if (mimeType?.toLowerCase() === "application/pdf") return true;
   if (/^https:\/\/drive\.google\.com\/file\/d\//i.test(url ?? "")) return true;
   return Boolean(url && /\.pdf(?:[?#]|$)/i.test(url));
-}
-
-function CellHighlight({ cell }: { cell: ScoreCell }) {
-  if (!cell.bbox) return null;
-  const left = dimension(cell.bbox.x);
-  const top = dimension(cell.bbox.y);
-  const width = dimension(cell.bbox.width);
-  const height = dimension(cell.bbox.height);
-  return (
-    <div
-      className="pointer-events-none absolute rounded-md border-2 border-indigo-600 bg-indigo-500/20 shadow-[0_0_0_9999px_rgba(15,23,42,0.18)]"
-      style={{ left, top, width, height }}
-    />
-  );
-}
-
-function dimension(value: number) {
-  return `${value <= 1 ? value * 100 : value}%`;
 }

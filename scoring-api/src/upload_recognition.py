@@ -11,6 +11,9 @@ from src.wire import ApiError
 
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+# レビュー切り抜きを data-URI で imageLinks に載せる際の上限 (base64後の文字数)。
+# 超過分は落とす (degrade) ことで巨大ペイロードを防ぐ。
+MAX_REVIEW_DATA_URI_BASE64_CHARS = 30000
 ALLOWED_UPLOAD_MIME_TYPES = {
     "application/pdf",
     "image/jpeg",
@@ -24,6 +27,22 @@ MIME_BY_EXTENSION = {
 }
 
 
+def review_images_to_data_uris(images: dict[str, bytes]) -> dict[str, str]:
+    """要確認セルのPNG切り抜き(bytes)を per-cell の data-URI 文字列に変換する。
+
+    空 bytes と、base64化後に上限を超えるものは落とす (degrade)。
+    """
+    data_uris: dict[str, str] = {}
+    for key, png_bytes in images.items():
+        if not png_bytes:
+            continue
+        encoded = base64.b64encode(png_bytes).decode("ascii")
+        if len(encoded) > MAX_REVIEW_DATA_URI_BASE64_CHARS:
+            continue
+        data_uris[key] = f"data:image/png;base64,{encoded}"
+    return data_uris
+
+
 def recognize_upload_file(file_payload: Any) -> dict[str, Any] | None:
     if not file_payload:
         return None
@@ -35,7 +54,7 @@ def recognize_upload_file(file_payload: Any) -> dict[str, Any] | None:
         result = recognize_scoresheet(upload["bytes"], upload["mime_type"], None)
     except Exception as error:
         result = failed_scoresheet_result("recognition_failed", str(error))
-    return result.to_recognition_payload()
+    return result.to_recognition_payload(review_images_to_data_uris(result.review_images))
 
 
 def decode_upload_file(file_payload: dict[str, Any]) -> dict[str, Any]:
