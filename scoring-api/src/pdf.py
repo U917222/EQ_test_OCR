@@ -161,7 +161,6 @@ def build_result_pdf_html(candidate: dict, result: dict, raw_cell_summary: dict)
             <tr>
               <td>候補者ID: {escape(str(candidate.get("candidate_id") or "-"))}</td>
               <td>検査日: {escape(str(candidate.get("test_date") or "-"))}</td>
-              <td>応募職種: {escape(str(candidate.get("role") or "-"))}</td>
             </tr>
           </table>
         </td>
