@@ -11,6 +11,9 @@ const SHEETS = {
   handwrittenTotals: 'HandwrittenTotals',
   results: 'Results',
   auditLog: 'AuditLog',
+  users: 'Users',
+  apiOperations: 'ApiOperations',
+  apiNonces: 'ApiNonces',
   config: 'Config',
 };
 
@@ -101,6 +104,27 @@ const HEADERS = {
     'action',
     'candidate_id',
     'detail_json',
+    'operator',
+    'operation_id',
+    'result',
+    'at',
+  ],
+  Users: [
+    'email',
+    'role',
+    'active',
+  ],
+  ApiOperations: [
+    'operation_id',
+    'action',
+    'candidate_id',
+    'status',
+    'result_json',
+    'created_at',
+  ],
+  ApiNonces: [
+    'nonce',
+    'ts',
   ],
   Config: [
     'key',
@@ -140,9 +164,10 @@ const SCRIPT_PROPERTY_KEYS = {
   adminUsers: 'ADMIN_USER_EMAILS',
   recognitionEndpointHosts: 'RECOGNITION_ENDPOINT_HOSTS',
   appAccessCode: 'APP_ACCESS_CODE',
+  functionsGasSecret: 'FUNCTIONS_GAS_SECRET',
 };
 
-const DEFAULT_SPREADSHEET_ID = '';
+const DEFAULT_SPREADSHEET_ID = '102G-XV6OXrNzTmXa96IWwcJcXZJ6A_vSEOQVIZ-7Z7U';
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const ALLOWED_UPLOAD_MIME_TYPES = {
   'image/jpeg': true,
@@ -175,6 +200,11 @@ function doPost(event) {
   try {
     const bodyText = getPostBody_(event);
     const payload = parsePostPayload_(bodyText);
+
+    if (payload && payload.claims) {
+      return dispatchApiRequest_(event, bodyText, payload);
+    }
+
     assertWebhookAuthorized_(event, bodyText);
 
     if (payload.action === 'recognitionResult') {
@@ -208,6 +238,7 @@ function setupProductionWorkbook() {
       ensureHeader_(sheet, HEADERS[sheetName]);
     });
     seedProductionConfig_();
+    seedApiUsersPlaceholder_();
     logAudit_('SETUP_PRODUCTION_WORKBOOK', '', { spreadsheetUrl: ss.getUrl() });
     return { ok: true, spreadsheetUrl: ss.getUrl() };
   } finally {
@@ -1617,8 +1648,13 @@ function upsertResult_(ss, result) {
 function assertWorkbookReady_() {
   const ss = getWorkbook_();
   Object.keys(HEADERS).forEach((sheetName) => {
-    const sheet = ss.getSheetByName(sheetName);
+    let sheet = ss.getSheetByName(sheetName);
     if (!sheet) {
+      if (['Users', 'ApiOperations', 'ApiNonces'].includes(sheetName)) {
+        sheet = getOrCreateSheet_(ss, sheetName);
+        ensureHeader_(sheet, HEADERS[sheetName]);
+        return;
+      }
       throw new Error(`Sheet is missing: ${sheetName}. Run setupProductionWorkbook first.`);
     }
     const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), HEADERS[sheetName].length)).getValues()[0];
@@ -1908,6 +1944,24 @@ function seedProductionConfig_() {
       appendObject_(sheet, config);
     }
   });
+}
+
+function seedApiUsersPlaceholder_() {
+  const ss = getWorkbook_();
+  const sheet = ss.getSheetByName(SHEETS.users);
+  if (!sheet || readObjects_(sheet).length > 0) return;
+
+  appendObject_(sheet, {
+    email: '',
+    role: 'admin',
+    active: 'FALSE',
+  });
+
+  try {
+    sheet.getRange(2, 1).setNote('Cloudflare Functions API 管理者のメールアドレスを入力し、active を TRUE にしてください。');
+  } catch (error) {
+    // Notes are best-effort metadata; setup should still succeed without them.
+  }
 }
 
 function getPostBody_(event) {

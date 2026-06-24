@@ -51,6 +51,7 @@ def _verify_bearer(authorization: str | None) -> None:
 
 
 @app.get("/healthz")
+@app.get("/readyz")
 def healthz() -> dict:
     return {"ok": True}
 
