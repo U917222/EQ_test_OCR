@@ -2,11 +2,11 @@ import type { BadgeProps } from "@/components/ui/badge";
 import type { CandidateStatus, Decision } from "@/lib/types";
 
 export const statusLabels: Record<CandidateStatus, string> = {
-  uploaded: "アップロード済み",
-  recognizing: "認識中",
-  needs_review: "レビュー待ち",
-  scored: "採点完了",
-  finalized: "確定済み",
+  uploaded: "応募済み",
+  recognizing: "履歴書提出済み",
+  needs_review: "面接選考済み",
+  scored: "評価待ち",
+  finalized: "結果",
 };
 
 export const decisionLabels: Record<Decision, string> = {
