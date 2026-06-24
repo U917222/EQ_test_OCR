@@ -457,9 +457,13 @@ function registerHiringDecision(candidateId, decision, employeeNumber, accessCod
     setCellByHeader_(sheet, table.headers, rowNumber, 'employee_number', storedEmployeeNumber);
     setCellByHeader_(sheet, table.headers, rowNumber, 'decision_by', actor);
     setCellByHeader_(sheet, table.headers, rowNumber, 'decision_at', decidedAt);
+    if (normalizedDecision) {
+      setCellByHeader_(sheet, table.headers, rowNumber, 'status', 'FINALIZED');
+    }
 
     const detail = { decision: normalizedDecision };
     if (storedEmployeeNumber) detail.employeeNumber = storedEmployeeNumber;
+    if (normalizedDecision) detail.status = 'FINALIZED';
     logAudit_('REGISTER_HIRING_DECISION', candidateId, detail);
 
     return {

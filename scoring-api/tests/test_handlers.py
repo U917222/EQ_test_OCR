@@ -6,6 +6,7 @@ from src.handlers import (
     handle_get_cells,
     handle_get_result_pdf,
     handle_register_candidate,
+    handle_save_decision,
 )
 from src.repository import CELL_KEYS
 from src.wire import ApiContext
@@ -98,8 +99,41 @@ class FakeRepo:
         if self.result:
             self.result["status"] = status
 
+    def save_decision(self, candidate_id, decision, employee_number, actor):
+        assert candidate_id == "cand-1"
+        stored_employee_number = employee_number if decision == "PASSED" else ""
+        self.candidate.update(
+            {
+                "hiring_decision": decision,
+                "employee_number": stored_employee_number,
+                "decision_by": actor,
+                "decision_at": "2026-06-24T01:00:00+00:00",
+                "updated_at": "2026-06-24T01:00:00+00:00",
+            }
+        )
+        if decision:
+            self.candidate["status"] = "FINALIZED"
+        return self.candidate
+
     def get_dashboard_data(self, candidate_id):
         return {"candidate": self.candidate, "result": self.result, "rawCellSummary": self.raw_cells}
+
+
+def test_save_decision_moves_candidate_to_finalized():
+    context = ApiContext(
+        claims={},
+        payload={"candidateId": "cand-1", "decision": "hire", "employeeNumber": "E-001"},
+        action="saveDecision",
+        operator="reviewer@example.com",
+        role="reviewer",
+        operation_id="op-decision",
+    )
+
+    response = handle_save_decision(context, FakeRepo())
+
+    assert response["candidate"]["decision"] == "hire"
+    assert response["candidate"]["employeeNumber"] == "E-001"
+    assert response["candidate"]["status"] == "finalized"
 
 
 def test_register_candidate_with_clean_upload_auto_finalizes(monkeypatch):

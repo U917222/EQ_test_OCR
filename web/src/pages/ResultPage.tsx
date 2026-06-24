@@ -81,9 +81,13 @@ export default function ResultPage() {
         employeeNumber: payload.employeeNumber,
         operationId: newOperationId(),
       }),
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success("合否を登録しました");
+      queryClient.setQueryData<GetResultResponse>(["result", id], (current) =>
+        current ? { ...current, candidate: data.candidate } : current,
+      );
       queryClient.invalidateQueries({ queryKey: ["result", id] });
+      queryClient.invalidateQueries({ queryKey: ["candidates"] });
     },
     onError: () => toast.error("合否を登録できませんでした"),
   });

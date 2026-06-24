@@ -388,16 +388,20 @@ class ScoringRepository:
             if duplicate:
                 raise RuntimeError(f"職員番号 {employee_number} は既に別の候補者に登録されています")
         stored_employee_number = employee_number if decision == "PASSED" else ""
+        decided_at = now_iso()
+        patch = {
+            "hiring_decision": decision,
+            "employee_number": stored_employee_number,
+            "decision_by": actor,
+            "decision_at": decided_at,
+            "updated_at": decided_at,
+        }
+        if decision:
+            patch["status"] = "FINALIZED"
         self.update_row(
             SHEETS["candidates"],
             int(row["_row_number"]),
-            {
-                "hiring_decision": decision,
-                "employee_number": stored_employee_number,
-                "decision_by": actor,
-                "decision_at": now_iso(),
-                "updated_at": now_iso(),
-            },
+            patch,
         )
         updated = self.get_candidate(candidate_id)
         if not updated:
