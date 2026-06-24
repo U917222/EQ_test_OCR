@@ -125,7 +125,7 @@ def test_score_candidate_matches_core_flow_and_results_row():
     assert result.cross_check == [{"item": "cat1", "computed": 18, "handwritten": 19}]
     assert result.total_rank == "A"
     assert result.minus_points == -2
-    assert "rule matched" in result.notes
+    assert "段階2以下の項目はありません" in result.notes
     assert "職務必要要件(⑤〜⑨)で段階2以下が 2 件" in result.notes
     assert "手書き合計と1件不一致" in result.notes
 
@@ -174,7 +174,24 @@ def test_response_attitude_minus_points(attitude_total, expected_stage, expected
 
     assert result.response_attitude_stage == expected_stage
     assert result.attitude_minus_points == expected_minus
-    assert result.total_rank == "C"
+    assert result.total_rank == "A"
+
+
+@pytest.mark.parametrize(
+    ("totals", "expected_rank"),
+    [
+        ({"cat1": 13, "cat2": 13, "cat3": 13, "cat4": 13}, "A"),
+        ({"cat1": 5, "cat2": 13, "cat3": 13, "cat4": 13}, "B"),
+        ({"cat1": 5, "cat2": 4, "cat3": 13, "cat4": 13}, "C"),
+        ({"cat1": 5, "cat2": 4, "cat3": 8, "cat4": 13}, "D"),
+    ],
+)
+def test_total_rank_counts_low_stages_in_labels_1_to_4(totals, expected_rank):
+    cells = cells_from_row_totals(row_totals_for_item_totals(**totals))
+
+    result = score_candidate(cells, ITEM_MASTER, SCORE_BANDS, rank_rules=[])
+
+    assert result.total_rank == expected_rank
 
 
 def test_job_requirement_low_stage_minus_counts_only_labels_5_to_9():
