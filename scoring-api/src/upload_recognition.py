@@ -30,7 +30,7 @@ def recognize_upload_file(file_payload: Any) -> dict[str, Any] | None:
     if not isinstance(file_payload, dict):
         raise ApiError("validation", "file must be an object")
 
-    upload = _decode_upload(file_payload)
+    upload = decode_upload_file(file_payload)
     try:
         result = recognize_scoresheet(upload["bytes"], upload["mime_type"], None)
     except Exception as error:
@@ -38,7 +38,7 @@ def recognize_upload_file(file_payload: Any) -> dict[str, Any] | None:
     return result.to_recognition_payload()
 
 
-def _decode_upload(file_payload: dict[str, Any]) -> dict[str, Any]:
+def decode_upload_file(file_payload: dict[str, Any]) -> dict[str, Any]:
     name = str(file_payload.get("name") or "").strip()
     mime_type = _normalize_mime_type(file_payload.get("mimeType") or file_payload.get("contentType"), name)
     raw_base64 = str(file_payload.get("base64") or "").strip()

@@ -380,6 +380,7 @@ function heatmapClass(confidence: number) {
 
 function isPdfDocument(mimeType?: string, url?: string) {
   if (mimeType?.toLowerCase() === "application/pdf") return true;
+  if (/^https:\/\/drive\.google\.com\/file\/d\//i.test(url ?? "")) return true;
   return Boolean(url && /\.pdf(?:[?#]|$)/i.test(url));
 }
 

@@ -288,6 +288,7 @@ def handle_get_cells(context: ApiContext, repo: ScoringRepository) -> dict[str, 
     raw_cells = repo.get_raw_cells(candidate_id)
     if not raw_cells:
         raise ApiError("not_found", f"Raw cells not found: {candidate_id}")
+    candidate = repo.get_candidate(candidate_id) or {}
     review_queue = repo.get_review_queue(candidate_id)
     flagged = {
         item.get("cell_key"): item.get("reason") or ""
@@ -299,6 +300,9 @@ def handle_get_cells(context: ApiContext, repo: ScoringRepository) -> dict[str, 
         for item in review_queue
         if item.get("cell_key") and item.get("image_link")
     }
+    source_url = str(candidate.get("source_url") or "").strip()
+    if source_url:
+        image_links = {"original": source_url, "preview": source_url, "pages": [source_url], **image_links}
     cells = {}
     for key in CELL_KEYS:
         raw = raw_cells.get(key)
@@ -325,6 +329,21 @@ def handle_register_candidate(context: ApiContext, repo: ScoringRepository) -> d
     candidate = repo.create_candidate(context.payload)
     result = None
     if context.payload.get("file"):
+        source_url = str(candidate.get("source_url") or "").strip()
+        file_payload = context.payload.get("file") if isinstance(context.payload.get("file"), dict) else {}
+        stored_mime_type = str(file_payload.get("mimeType") or file_payload.get("contentType") or "").split(";")[0].strip().lower()
+        if not source_url:
+            try:
+                from src.upload_storage import save_upload_file
+            except ImportError as error:
+                raise ApiError("internal", "src.upload_storage.save_upload_file is not available") from error
+
+            stored_upload = save_upload_file(context.payload.get("file"), str(candidate["candidate_id"]))
+            source_url = stored_upload["sourceUrl"]
+            stored_mime_type = stored_upload["mimeType"]
+            repo.update_candidate_source_url(str(candidate["candidate_id"]), source_url)
+            candidate = repo.get_candidate(str(candidate["candidate_id"])) or candidate
+
         try:
             from src.upload_recognition import recognize_upload_file
         except ImportError as error:
@@ -332,6 +351,15 @@ def handle_register_candidate(context: ApiContext, repo: ScoringRepository) -> d
 
         recognition = recognize_upload_file(context.payload.get("file"))
         if recognition:
+            if source_url:
+                image_links = recognition.get("imageLinks") if isinstance(recognition.get("imageLinks"), dict) else {}
+                recognition["imageLinks"] = {
+                    "original": source_url,
+                    "preview": source_url,
+                    "pages": [source_url],
+                    "mimeType": stored_mime_type,
+                    **image_links,
+                }
             unresolved_count = repo.import_recognition_result(str(candidate["candidate_id"]), recognition)
             if unresolved_count == 0:
                 result = finalize_candidate(str(candidate["candidate_id"]), context.operator, repo)["result"]

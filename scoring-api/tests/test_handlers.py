@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from src.handlers import (
     handle_delete_candidate,
     handle_get_dashboard,
+    handle_get_cells,
     handle_get_result_pdf,
     handle_register_candidate,
 )
@@ -34,11 +35,16 @@ class FakeRepo:
         assert candidate_id == "cand-1"
         self.raw_cells.update({key: cell["value"] for key, cell in recognition["cells"].items()})
         self.raw_cells["unresolved_count"] = recognition["unresolvedCount"]
+        self.candidate["status"] = "REVIEW_REQUIRED" if recognition["unresolvedCount"] else "READY_TO_FINALIZE"
         return recognition["unresolvedCount"]
 
     def get_candidate(self, candidate_id):
         assert candidate_id == "cand-1"
         return self.candidate
+
+    def update_candidate_source_url(self, candidate_id, source_url):
+        assert candidate_id == "cand-1"
+        self.candidate["source_url"] = source_url
 
     def delete_candidate(self, candidate_id):
         assert candidate_id == "cand-1"
@@ -54,6 +60,10 @@ class FakeRepo:
     def get_raw_cells(self, candidate_id):
         assert candidate_id == "cand-1"
         return self.raw_cells
+
+    def get_review_queue(self, candidate_id):
+        assert candidate_id == "cand-1"
+        return []
 
     def read_masters(self, candidate_id):
         item_master = [
@@ -103,6 +113,13 @@ def test_register_candidate_with_clean_upload_auto_finalizes(monkeypatch):
         }
 
     monkeypatch.setattr("src.upload_recognition.recognize_upload_file", fake_recognize_upload_file)
+    monkeypatch.setattr(
+        "src.upload_storage.save_upload_file",
+        lambda file_payload, candidate_id: {
+            "sourceUrl": "https://drive.google.com/file/d/uploaded/view",
+            "mimeType": "application/pdf",
+        },
+    )
     context = ApiContext(
         claims={},
         payload={
@@ -123,6 +140,52 @@ def test_register_candidate_with_clean_upload_auto_finalizes(monkeypatch):
     assert response["result"]["candidateId"] == "cand-1"
 
 
+def test_register_candidate_persists_upload_before_recognition(monkeypatch):
+    captured = {}
+
+    def fake_save_upload_file(file_payload, candidate_id):
+        captured["stored_candidate_id"] = candidate_id
+        return {"sourceUrl": "https://drive.google.com/file/d/uploaded/view", "mimeType": "application/pdf"}
+
+    def fake_recognize_upload_file(file_payload):
+        return {
+            "cells": {
+                key: {
+                    "value": None if key == "s01" else 1,
+                    "confidence": 0.2 if key == "s01" else 0.99,
+                    "reason": "low_confidence" if key == "s01" else "",
+                }
+                for key in CELL_KEYS
+            },
+            "confidenceAvg": 0.98,
+            "unresolvedCount": 1,
+            "pageIndex": 0,
+            "imageLinks": {},
+        }
+
+    monkeypatch.setattr("src.upload_storage.save_upload_file", fake_save_upload_file)
+    monkeypatch.setattr("src.upload_recognition.recognize_upload_file", fake_recognize_upload_file)
+    repo = FakeRepo()
+    context = ApiContext(
+        claims={},
+        payload={
+            "name": "Example",
+            "testDate": "2026-06-24",
+            "file": {"name": "scoresheet.pdf", "mimeType": "application/pdf", "base64": "JVBERi0="},
+        },
+        action="registerCandidate",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-1",
+    )
+
+    response = handle_register_candidate(context, repo)
+
+    assert captured["stored_candidate_id"] == "cand-1"
+    assert repo.candidate["source_url"] == "https://drive.google.com/file/d/uploaded/view"
+    assert response["candidate"]["status"] == "needs_review"
+
+
 def test_delete_candidate_removes_candidate_related_rows():
     context = ApiContext(
         claims={},
@@ -139,6 +202,24 @@ def test_delete_candidate_removes_candidate_related_rows():
     assert response["candidateId"] == "cand-1"
     assert response["candidate"]["candidateId"] == "cand-1"
     assert response["rowsDeleted"]["candidates"] == 1
+
+
+def test_get_cells_returns_candidate_source_url_as_document_link():
+    repo = FakeRepo()
+    repo.candidate["source_url"] = "https://drive.google.com/file/d/uploaded/view"
+    context = ApiContext(
+        claims={},
+        payload={"candidateId": "cand-1"},
+        action="getCells",
+        operator="operator@example.com",
+        role="operator",
+        operation_id=None,
+    )
+
+    response = handle_get_cells(context, repo)
+
+    assert response["imageLinks"]["preview"] == "https://drive.google.com/file/d/uploaded/view"
+    assert response["imageLinks"]["original"] == "https://drive.google.com/file/d/uploaded/view"
 
 
 def test_get_result_pdf_uses_raw_dashboard_data(monkeypatch):
