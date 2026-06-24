@@ -952,7 +952,6 @@ function buildCandidateResultPdfHtml_(data) {
           <tr>
             <td>候補者ID: ${escapeHtmlForPdf_(candidate.candidate_id || '-')}</td>
             <td>検査日: ${escapeHtmlForPdf_(candidate.test_date || '-')}</td>
-            <td>応募職種: ${escapeHtmlForPdf_(candidate.role || '-')}</td>
           </tr>
         </table>
       </td>
