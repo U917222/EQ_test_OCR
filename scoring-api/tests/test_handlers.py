@@ -3,6 +3,7 @@ from types import SimpleNamespace
 from src.handlers import (
     handle_delete_candidate,
     handle_get_dashboard,
+    handle_get_result_pdf,
     handle_register_candidate,
 )
 from src.repository import CELL_KEYS
@@ -138,6 +139,47 @@ def test_delete_candidate_removes_candidate_related_rows():
     assert response["candidateId"] == "cand-1"
     assert response["candidate"]["candidateId"] == "cand-1"
     assert response["rowsDeleted"]["candidates"] == 1
+
+
+def test_get_result_pdf_uses_raw_dashboard_data(monkeypatch):
+    captured = {}
+
+    def fake_build_result_pdf(candidate, result, raw_cell_summary):
+        captured["candidate"] = candidate
+        captured["result"] = result
+        captured["raw_cell_summary"] = raw_cell_summary
+        return b"%PDF-1.7\n%%EOF"
+
+    monkeypatch.setattr("src.pdf.build_result_pdf", fake_build_result_pdf)
+    repo = FakeRepo()
+    repo.result = {
+        "candidate_id": "cand-1",
+        "total_rank": "B",
+        "response_attitude_stage": 3,
+        "job_requirement_minus_points": 0,
+        "attitude_minus_points": 0,
+        "item_stages": {"①セルフコントロール": 4},
+        "item_totals": {"①セルフコントロール": 14},
+        "job_requirement_low_items": [],
+        "cross_check": [],
+    }
+    context = ApiContext(
+        claims={},
+        payload={"candidateId": "cand-1"},
+        action="getResultPdf",
+        operator="reviewer@example.com",
+        role="reviewer",
+        operation_id=None,
+    )
+
+    response = handle_get_result_pdf(context, repo)
+
+    assert response["filename"] == "CHEQ_Example.pdf"
+    assert captured["candidate"]["candidate_id"] == "cand-1"
+    assert captured["candidate"]["test_date"] == "2026-06-24"
+    assert captured["result"]["total_rank"] == "B"
+    assert captured["result"]["item_stages"]["①セルフコントロール"] == 4
+    assert captured["raw_cell_summary"]["unresolved_count"] == 0
 
 
 class DashboardFakeRepo:

@@ -10,6 +10,7 @@ RUN apt-get update \
         libgdk-pixbuf-2.0-0 \
         libpango-1.0-0 \
         libpangocairo-1.0-0 \
+        fonts-noto-cjk \
         shared-mime-info \
     && rm -rf /var/lib/apt/lists/*
 
