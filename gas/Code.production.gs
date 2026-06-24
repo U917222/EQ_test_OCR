@@ -789,7 +789,7 @@ function downloadCandidateResultPdf(candidateId, accessCode) {
   const fileName = `CHEQ_${sanitizePdfFileName_(data.candidate.name || data.candidate.candidate_id || 'result')}.pdf`;
   const html = buildCandidateResultPdfHtml_(data);
   const pdfBlob = Utilities
-    .newBlob(html, 'text/html', fileName.replace(/\.pdf$/, '.html'))
+    .newBlob(html, 'text/html; charset=UTF-8', fileName.replace(/\.pdf$/, '.html'))
     .getAs('application/pdf')
     .setName(fileName);
 
@@ -876,7 +876,7 @@ function buildCandidateResultPdfHtml_(data) {
       body {
         margin: 0;
         color: #1a1a1a;
-        font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+        font-family: "Noto Sans JP", "Noto Sans CJK JP", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
         font-size: 10px;
       }
       h1, h2, h3, p { margin: 0; }

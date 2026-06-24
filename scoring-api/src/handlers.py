@@ -435,8 +435,10 @@ def finalize_candidate(candidate_id: str, actor: str, repo: ScoringRepository) -
 
 def handle_get_result_pdf(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:
     candidate_id = require_candidate_id(context.payload)
-    result_response = handle_get_result(context, repo)
-    if not result_response.get("result"):
+    dashboard = repo.get_dashboard_data(candidate_id)
+    if not dashboard.get("candidate"):
+        raise ApiError("not_found", f"Candidate not found: {candidate_id}")
+    if not dashboard.get("result"):
         raise ApiError("validation", "採点結果がまだ確定していません。先に「結果を表示」または「採点確定」を実行してください。")
     try:
         from src.pdf import build_result_pdf
@@ -444,11 +446,11 @@ def handle_get_result_pdf(context: ApiContext, repo: ScoringRepository) -> dict[
         raise ApiError("internal", "src.pdf.build_result_pdf is not available") from error
 
     pdf_bytes = build_result_pdf(
-        result_response["candidate"],
-        result_response["result"],
-        result_response.get("rawCellSummary"),
+        dashboard["candidate"],
+        dashboard["result"],
+        dashboard.get("rawCellSummary"),
     )
-    name = result_response["candidate"].get("name") or candidate_id
+    name = dashboard["candidate"].get("name") or candidate_id
     return {
         "filename": f"CHEQ_{name}.pdf",
         "mimeType": "application/pdf",

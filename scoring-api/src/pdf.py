@@ -77,7 +77,7 @@ def build_result_pdf_html(candidate: dict, result: dict, raw_cell_summary: dict)
       body {{
         margin: 0;
         color: #1a1a1a;
-        font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+        font-family: "Noto Sans CJK JP", "Noto Sans JP", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
         font-size: 10px;
       }}
       h1, h2, h3, p {{ margin: 0; }}
