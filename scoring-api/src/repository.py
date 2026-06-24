@@ -291,6 +291,16 @@ class ScoringRepository:
             raise RuntimeError(f"Candidate not found: {candidate_id}")
         return candidate
 
+    def update_candidate_source_url(self, candidate_id: str, source_url: str) -> None:
+        row = self.get_candidate(candidate_id)
+        if not row:
+            raise RuntimeError(f"Candidate not found: {candidate_id}")
+        self.update_row(
+            SHEETS["candidates"],
+            int(row["_row_number"]),
+            {"source_url": source_url, "updated_at": now_iso()},
+        )
+
     def import_recognition_result(self, candidate_id: str, recognition: dict[str, Any]) -> int:
         raw_row = self.get_raw_cells(candidate_id)
         if not raw_row:

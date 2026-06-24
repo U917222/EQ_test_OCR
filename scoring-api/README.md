@@ -18,6 +18,7 @@ ALLOW_INSECURE_DEV_AUTH=1 uv run uvicorn main:app --host 0.0.0.0 --port 8080
 
 - `FUNCTIONS_GAS_SECRET`: Cloudflare Functionsと共有するHMAC秘密鍵
 - `SCORING_SPREADSHEET_ID`: 保存先スプレッドシートID
+- `SCORING_UPLOAD_DRIVE_FOLDER_ID`: 直接アップロードされた採点用紙原本を保存するGoogle Drive folder ID
 - `ALLOW_INSECURE_DEV_AUTH=1`: ローカル開発用。署名/timestamp/nonce検証だけをスキップ
 
 Cloudflare Pages側:
@@ -25,7 +26,7 @@ Cloudflare Pages側:
 - `SCORING_API_URL`: このCloud Run APIのURL。例: `https://cheq-scoring-xxxxx-an.a.run.app/api`
 - `FUNCTIONS_GAS_SECRET`: Cloud Run側と同じ値
 
-Google Sheets APIはADCを使います。Cloud Run実行サービスアカウントへ対象スプレッドシートを共有してください。
+Google Sheets/Drive APIはADCを使います。Cloud Run実行サービスアカウントへ対象スプレッドシートと、アップロード保存先Drive folderを共有してください。
 
 ## テスト
 

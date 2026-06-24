@@ -71,6 +71,11 @@ export function scoreCandidate(
   const attitudeKey = itemMaster.find((item) => item.isAttitude)?.key ?? "";
   const responseAttitudeStage = attitudeKey ? itemStages[attitudeKey] ?? null : null;
   const attitudeMinusPoints = responseAttitudeStage === 5 ? -2 : responseAttitudeStage === 4 ? -1 : 0;
+  const rankStageKeys = new Set(
+    itemMaster
+      .filter((item) => !item.isAttitude && ["①", "②", "③", "④"].includes(item.label.slice(0, 1)))
+      .map((item) => item.key),
+  );
   const jobRequirementLowItems = itemMaster
     .filter((item) => !item.isAttitude && ["⑤", "⑥", "⑦", "⑧", "⑨"].includes(item.label.slice(0, 1)))
     .filter((item) => itemStages[item.key] === 1 || itemStages[item.key] === 2)
@@ -79,7 +84,7 @@ export function scoreCandidate(
   const crossCheck = Object.entries(itemTotals)
     .filter(([key, total]) => handwritten[key] !== undefined && handwritten[key] !== total)
     .map(([key, total]) => ({ item: key, computed: total, handwritten: Number(handwritten[key]) }));
-  const rank = calculateFallbackRank(itemStages, attitudeMinusPoints);
+  const rank = calculateFallbackRank(itemStages, attitudeMinusPoints, rankStageKeys);
   const labels = Object.fromEntries(itemMaster.map((item) => [item.key, item.label]));
   const itemTotalsByLabel = labelKeyed(itemTotals, labels);
   const itemStagesByLabel = labelKeyed(itemStages, labels);
@@ -188,9 +193,13 @@ function computeRowScores(cells: Record<string, CellValue>) {
   return { scores, issues };
 }
 
-function calculateFallbackRank(stages: Record<string, number | null>, attitudeMinusPoints: number) {
+function calculateFallbackRank(
+  stages: Record<string, number | null>,
+  attitudeMinusPoints: number,
+  rankStageKeys: Set<string>,
+) {
   const values = Object.entries(stages)
-    .filter(([key]) => key !== "attitude")
+    .filter(([key]) => rankStageKeys.has(key))
     .map(([, value]) => value)
     .filter((value): value is number => typeof value === "number");
   if (!values.length) return { rank: "", note: "段階得点がありません" };

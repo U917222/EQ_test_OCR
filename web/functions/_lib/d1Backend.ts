@@ -153,6 +153,11 @@ async function executeWithIdempotency(
     .first<{ action: string; candidate_id: string; status: string; result_json: string }>();
   if (existing) {
     if (existing.action !== context.action) throw new HttpError(409, "conflict", "operationId was already used");
+    if (existing.status !== "SUCCEEDED") {
+      const saved = jsonParse(existing.result_json, {}) as { error?: unknown };
+      const message = typeof saved.error === "string" && saved.error ? saved.error : "operationId is not replayable";
+      throw new HttpError(existing.status === "FAILED" ? 500 : 409, existing.status === "FAILED" ? "internal" : "conflict", message);
+    }
     return { idempotentReplay: true, ...jsonParse(existing.result_json, {}) };
   }
   await db
