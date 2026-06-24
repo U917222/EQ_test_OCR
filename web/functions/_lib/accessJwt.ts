@@ -40,7 +40,7 @@ export async function verifyAccessJwt(
   env: AccessJwtEnv,
 ): Promise<VerifiedAccessJwt> {
   const sharedPassword = env.APP_ACCESS_PASSWORD?.trim();
-  if (sharedPassword && requestPassword(request) === sharedPassword) {
+  if (sharedPassword && (await sharedPasswordMatches(request, sharedPassword))) {
     const email = env.APP_ACCESS_EMAIL?.trim() || env.MVP_OPERATOR_EMAIL?.trim() || "operator@example.com";
     return { email, claims: { email, auth: "shared-password" } };
   }
@@ -101,6 +101,28 @@ function requestPassword(request: Request): string {
   } catch {
     return "";
   }
+}
+
+async function sharedPasswordMatches(request: Request, expected: string): Promise<boolean> {
+  const supplied = requestPassword(request);
+  if (!supplied) return false;
+
+  const encoder = new TextEncoder();
+  const [suppliedHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(supplied)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+
+  return bytesEqual(new Uint8Array(suppliedHash), new Uint8Array(expectedHash));
+}
+
+function bytesEqual(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false;
+  let diff = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    diff |= left[index] ^ right[index];
+  }
+  return diff === 0;
 }
 
 function envFlag(value: string | undefined): boolean {

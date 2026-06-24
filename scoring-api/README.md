@@ -12,7 +12,7 @@ uv sync
 ALLOW_INSECURE_DEV_AUTH=1 uv run uvicorn main:app --host 0.0.0.0 --port 8080
 ```
 
-`GET /healthz` は認証なしで `{"ok":true}` を返します。API本体は `POST /` または `POST /api` で、`{"claims": {...}, "payload": {...}}` を受け取ります。
+`GET /readyz` は認証なしで `{"ok":true}` を返します。API本体は `POST /` または `POST /api` で、`{"claims": {...}, "payload": {...}}` を受け取ります。
 
 ## 環境変数
 

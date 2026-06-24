@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { useAuth } from "@/lib/auth";
-import { isApiError } from "@/lib/api";
+import { isApiError, rememberSharedPassword } from "@/lib/api";
 
 const CandidatesPage = lazy(() => import("@/pages/CandidatesPage"));
 const CandidateNewPage = lazy(() => import("@/pages/CandidateNewPage"));
@@ -26,8 +26,9 @@ function AuthGate() {
     event.preventDefault();
     const nextPassword = password.trim();
     if (!nextPassword) return;
-    localStorage.setItem("cheq_app_password", nextPassword);
-    document.cookie = `cheq_app_password=${encodeURIComponent(nextPassword)}; Path=/; Max-Age=2592000; SameSite=Lax; Secure`;
+    rememberSharedPassword(nextPassword);
+    document.cookie = "cheq_app_password=; Path=/; Max-Age=0; SameSite=Strict; Secure";
+    document.cookie = `cheq_app_password=${encodeURIComponent(nextPassword)}; Path=/; SameSite=Strict; Secure`;
     reload();
   };
 

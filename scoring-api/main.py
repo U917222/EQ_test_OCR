@@ -30,9 +30,8 @@ ERROR_STATUS = {
 }
 
 
-@app.get("/healthz")
 @app.get("/readyz")
-def healthz() -> dict[str, bool]:
+def readyz() -> dict[str, bool]:
     return {"ok": True}
 
 

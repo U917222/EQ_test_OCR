@@ -32,7 +32,6 @@ const DEFAULT_BANDS: Record<string, Array<{ min: number; max: number; stage: num
 export interface MasterRows {
   itemMaster: Array<Record<string, unknown>>;
   scoreBands: Array<Record<string, unknown>>;
-  rankRules: Array<Record<string, unknown>>;
   handwrittenTotals: Array<Record<string, unknown>>;
 }
 

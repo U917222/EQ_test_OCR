@@ -660,7 +660,6 @@ function calculateCandidateResultInternal_(candidateId) {
     // マスタはシートが正。採点ロジックは CheqScoring.gs (純粋関数) に委譲する
     const itemMaster = buildItemMasterFromRows(readObjects_(ss.getSheetByName(SHEETS.itemMaster)));
     const bands = buildBandsFromRows(readObjects_(ss.getSheetByName(SHEETS.scoreBands)));
-    const rankRules = readObjects_(ss.getSheetByName(SHEETS.rankRules));
     const handwrittenTotals = readHandwrittenTotals_(ss, candidateId);
 
     const scored = scoreSheet(extractCells_(rawCells), {
@@ -672,14 +671,14 @@ function calculateCandidateResultInternal_(candidateId) {
       throw new Error(`Undecided cells remain: ${scored.issues.map((i) => i.cell).join(', ')}`);
     }
 
-    // RankRules は項目ラベル(①〜④/応答態度)で条件を書くため、ラベルキーに変換する
+    // 総合判定は項目ラベル①〜④だけを見る。
     const stagesByLabel = {};
     const totalsByLabel = {};
     itemMaster.forEach((item) => {
       stagesByLabel[item.label] = scored.stages[item.key];
       totalsByLabel[item.label] = scored.itemTotals[item.key];
     });
-    const rankResult = calculateRank_(stagesByLabel, rankRules);
+    const rankResult = calculateFallbackRank_(stagesByLabel);
     const attitudeMinus = Number(rankResult.minusPoints || 0);
     const jobReqMinus = Number(scored.jobRequirementMinusPoints || 0);
     // minus_points は職務必要要件(⑤〜⑨)の低段階項目のみ。応答態度減点は別列で保持する。
@@ -1533,49 +1532,9 @@ function extractCells_(rawCellsRow) {
   return cells;
 }
 
-function calculateRank_(categoryStages, rankRules) {
-  // 総合判定は①〜④の段階2以下の個数で固定する。
-  // 旧シートに残った RankRules があると古い判定が優先されるため、ここでは参照しない。
-  return calculateFallbackRank_(categoryStages);
-}
-
-function evaluateRankCondition_(condition, categoryStages) {
-  if (condition.all) {
-    return condition.all.every((item) => evaluateRankCondition_(item, categoryStages));
-  }
-  if (condition.any) {
-    return condition.any.some((item) => evaluateRankCondition_(item, categoryStages));
-  }
-  if (condition.category) {
-    const stage = Number(categoryStages[condition.category] || 0);
-    if (condition.eq !== undefined) return stage === Number(condition.eq);
-    if (condition.lte !== undefined) return stage <= Number(condition.lte);
-    if (condition.gte !== undefined) return stage >= Number(condition.gte);
-    if (condition.lt !== undefined) return stage < Number(condition.lt);
-    if (condition.gt !== undefined) return stage > Number(condition.gt);
-  }
-  if (condition.min_stage_lte !== undefined) {
-    const stages = rankStageValues_(categoryStages);
-    return stages.length > 0 && Math.min(...stages) <= Number(condition.min_stage_lte);
-  }
-  if (condition.low_stage_count_gte !== undefined) {
-    const threshold = Number(condition.threshold || 2);
-    const count = rankStageValues_(categoryStages).filter((value) => value <= threshold).length;
-    return count >= Number(condition.low_stage_count_gte);
-  }
-  if (condition.average_stage_lt !== undefined) {
-    const stages = rankStageValues_(categoryStages);
-    if (stages.length === 0) return false;
-    const average = stages.reduce((sum, value) => sum + value, 0) / stages.length;
-    return average < Number(condition.average_stage_lt);
-  }
-  return false;
-}
-
 // 総合ランクの集計対象段階は①〜④のみ。
 // ⑤〜⑨は職務必要要件マイナスとして扱い、総合ランクの段階2以下カウントには含めない。
 // 応答態度は「段階が高いほど悪い」逆スケールのため除外する。
-// （応答態度を条件にしたい場合は {"category":"応答態度","gte":4} のように明示指定する）
 function rankStageValues_(categoryStages) {
   return Object.keys(categoryStages)
     .filter((label) => /^[①②③④]/.test(label))

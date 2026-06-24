@@ -1073,16 +1073,14 @@ function requireEvaluationId(payload: Record<string, unknown>) {
 }
 
 async function readMasters(db: D1Database, candidateId: string): Promise<MasterRows> {
-  const [itemMaster, scoreBands, rankRules, handwrittenTotals] = await Promise.all([
+  const [itemMaster, scoreBands, handwrittenTotals] = await Promise.all([
     db.prepare("SELECT * FROM item_master ORDER BY display_order").all<Record<string, unknown>>(),
     db.prepare("SELECT * FROM score_bands ORDER BY item_key, min_score").all<Record<string, unknown>>(),
-    db.prepare("SELECT * FROM rank_rules ORDER BY rule_id").all<Record<string, unknown>>(),
     db.prepare("SELECT * FROM handwritten_totals WHERE candidate_id = ?").bind(candidateId).all<Record<string, unknown>>(),
   ]);
   return {
     itemMaster: itemMaster.results,
     scoreBands: scoreBands.results,
-    rankRules: rankRules.results,
     handwrittenTotals: handwrittenTotals.results,
   };
 }
