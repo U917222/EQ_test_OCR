@@ -139,10 +139,23 @@ const scoresheetSvg = `
 </svg>`;
 const scoresheetImage = `data:image/svg+xml,${encodeURIComponent(scoresheetSvg)}`;
 
+// 要確認セルの手書き切り抜き(デモ用ダミー)。確認カードに画像を出すため。
+function buildCellImages(): Partial<Record<CellKey, string>> {
+  const images: Partial<Record<CellKey, string>> = {};
+  for (const cell of demoCells) {
+    if (cell.resolved) continue;
+    const digit = cell.detectedValue ?? "?";
+    const cropSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="180" height="80" viewBox="0 0 180 80"><rect width="180" height="80" fill="#ffffff" stroke="#cbd5e1"/><text x="16" y="54" font-family="sans-serif" font-size="34" fill="#94a3b8">${digit}</text><circle cx="126" cy="40" r="24" fill="none" stroke="#0f172a" stroke-width="3"/><text x="115" y="52" font-family="serif" font-size="30" fill="#0f172a">${digit}</text></svg>`;
+    images[cell.key] = `data:image/svg+xml,${encodeURIComponent(cropSvg)}`;
+  }
+  return images;
+}
+
 const cellsResponse: GetCellsResponse = {
   cells: demoCells,
   reviewQueue: demoCells.filter((cell) => !cell.resolved).map((cell) => cell.key),
   imageLinks: { preview: scoresheetImage, original: scoresheetImage, pages: [scoresheetImage] },
+  cellImages: buildCellImages(),
 };
 
 type DemoDecision = "hire" | "reject";
@@ -226,11 +239,12 @@ function stageFor(total: number): number {
 }
 
 function rankFor(items: CheqItem[]): CandidateResult["totalRank"] {
-  const targetItems = items.filter((item) => !item.isAttitude);
-  const ratio = targetItems.reduce((sum, item) => sum + item.total, 0) / (targetItems.length * 24);
-  if (ratio >= 0.78) return "A";
-  if (ratio >= 0.62) return "B";
-  if (ratio >= 0.46) return "C";
+  const lowCount = items
+    .filter((item) => !item.isAttitude && ["①", "②", "③", "④"].includes(item.label.slice(0, 1)))
+    .filter((item) => item.stage <= 2).length;
+  if (lowCount <= 0) return "A";
+  if (lowCount === 1) return "B";
+  if (lowCount === 2) return "C";
   return "D";
 }
 

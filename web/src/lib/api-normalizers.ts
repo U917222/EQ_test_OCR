@@ -29,6 +29,7 @@ export function normalizeGetCellsResponse(raw: unknown): GetCellsResponse {
     cells,
     reviewQueue: normalizeReviewQueue(data.reviewQueue, cells),
     imageLinks: normalizeImageLinks(data.imageLinks),
+    cellImages: normalizeCellImages(data.imageLinks, data.cellImages),
   };
 }
 
@@ -108,7 +109,8 @@ function normalizeImageLinks(raw: unknown): ImageLinks {
   const pages = Array.isArray(links.pages)
     ? links.pages.filter((page): page is string => typeof page === "string" && page.length > 0)
     : Object.entries(links)
-      .filter(([key]) => !["mimeType", "contentType"].includes(key))
+      // mimeType/contentType と per-cell 切り抜き(sNN)はページ画像ではないので除外する
+      .filter(([key]) => !["mimeType", "contentType"].includes(key) && !toCellKey(key))
       .map(([, page]) => page)
       .filter((page): page is string => typeof page === "string" && page.length > 0);
 
@@ -118,6 +120,22 @@ function normalizeImageLinks(raw: unknown): ImageLinks {
     pages,
     mimeType,
   };
+}
+
+// 実バックエンドは per-cell の手書き切り抜きを imageLinks の sNN キーに混ぜて返す。
+// 一方、正規化済み(デモ等)のデータは top-level の cellImages に持つ。両方を統合して
+// 取り出すことで、この関数は二度適用しても結果が変わらない(冪等)。
+function normalizeCellImages(linksRaw: unknown, cellImagesRaw: unknown): Partial<Record<CellKey, string>> {
+  const images: Partial<Record<CellKey, string>> = {};
+  for (const source of [asRecord(linksRaw), asRecord(cellImagesRaw)]) {
+    for (const [key, value] of Object.entries(source)) {
+      const cellKey = toCellKey(key);
+      if (cellKey && typeof value === "string" && value.length > 0) {
+        images[cellKey] = value;
+      }
+    }
+  }
+  return images;
 }
 
 function cellPosition(key: CellKey) {
