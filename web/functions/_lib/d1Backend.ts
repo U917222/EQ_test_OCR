@@ -929,8 +929,8 @@ async function listEvaluationMeta(db: D1Database) {
 }
 
 async function listEvaluations(db: D1Database, candidateId: string) {
-  const candidate = await getCandidate(db, candidateId);
-  if (!candidate) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
+  // 候補者は本番では Sheets(scoring-api)管理で D1 には存在しない。candidate_id は参照キー
+  // としてのみ扱い、D1 候補者行の存在は要求しない(無ければ空配列を返す)。
   const rows = await db
     .prepare("SELECT * FROM evaluations WHERE candidate_id = ? ORDER BY created_at DESC")
     .bind(candidateId)
@@ -996,8 +996,8 @@ async function registerEvaluator(db: D1Database, payload: Record<string, unknown
 async function saveEvaluation(db: D1Database, context: Context) {
   const payload = context.payload;
   const candidateId = requireCandidateId(payload);
-  const candidate = await getCandidate(db, candidateId);
-  if (!candidate) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
+  // 候補者は本番では Sheets(scoring-api)管理で D1 には存在しない。candidate_id は参照キー
+  // としてのみ保存し、D1 候補者行の存在は要求しない。
   const evaluatorName = String(payload.evaluatorName ?? "").trim();
   if (!evaluatorName) throw new HttpError(400, "validation", "評価者名を入力してください");
   const items = normalizeEvaluationItems(payload.items);

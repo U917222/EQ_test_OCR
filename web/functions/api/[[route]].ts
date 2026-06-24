@@ -31,6 +31,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const waitUntil = typeof context.waitUntil === "function" ? context.waitUntil.bind(context) : undefined;
     return dispatchD1(context.env, action, email, body, waitUntil);
   } catch (error) {
+    // 内部例外(非 HttpError)と 5xx はログに残す。これが無いと本番で原因が追えない。
+    if (!(error instanceof HttpError) || error.status >= 500) {
+      console.error("[api] request failed:", error);
+    }
     return responseFromError(error);
   }
 };
