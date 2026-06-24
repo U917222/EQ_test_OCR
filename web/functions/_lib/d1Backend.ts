@@ -35,6 +35,12 @@ const REQUIRED_ROLES: Record<Action, Role> = {
   finalize: "reviewer",
   saveDecision: "reviewer",
   exportBackup: "admin",
+  listEvaluationMeta: "operator",
+  listEvaluations: "operator",
+  getEvaluation: "operator",
+  registerEvaluator: "operator",
+  saveEvaluation: "operator",
+  deleteEvaluation: "reviewer",
 };
 
 const STATUS_TO_API: Record<string, string> = {
@@ -117,6 +123,18 @@ async function handleAction(
       throw new HttpError(400, "validation", "D1 backend does not generate result PDFs yet");
     case "exportBackup":
       return { backup: await exportD1ToSpreadsheetBackup(db, { bindingName: "CHEQ_DB" }) };
+    case "listEvaluationMeta":
+      return listEvaluationMeta(db);
+    case "listEvaluations":
+      return listEvaluations(db, requireCandidateId(context.payload));
+    case "getEvaluation":
+      return getEvaluation(db, requireEvaluationId(context.payload));
+    case "registerEvaluator":
+      return registerEvaluator(db, context.payload);
+    case "saveEvaluation":
+      return saveEvaluation(db, context);
+    case "deleteEvaluation":
+      return deleteEvaluation(db, context.payload);
     default:
       throw new HttpError(400, "validation", `Unsupported action: ${context.action}`);
   }
@@ -886,6 +904,172 @@ async function saveDecision(db: D1Database, candidateId: string, payload: Record
   const candidate = await getCandidate(db, candidateId);
   if (!candidate) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
   return { candidate: apiCandidate(candidate) };
+}
+
+// ---- 総合評定（面接評価） ----
+
+const EVALUATION_ITEM_KEYS = ["knowledge", "adaptability", "personality", "interest", "potential", "aptitude"];
+
+type EvaluationItemRow = { key: string; score: number; comment: string };
+
+async function listEvaluationMeta(db: D1Database) {
+  const [items, evaluators] = await Promise.all([
+    db.prepare("SELECT item_key, label, description, display_order FROM evaluation_item_master ORDER BY display_order").all<Record<string, unknown>>(),
+    db.prepare("SELECT evaluator_id, name FROM evaluators WHERE active = 1 ORDER BY name").all<Record<string, unknown>>(),
+  ]);
+  return {
+    items: items.results.map((row) => ({
+      key: row.item_key ?? "",
+      label: row.label ?? "",
+      description: row.description ?? "",
+      displayOrder: numberOrNull(row.display_order) ?? 0,
+    })),
+    evaluators: evaluators.results.map((row) => ({ evaluatorId: row.evaluator_id ?? "", name: row.name ?? "" })),
+  };
+}
+
+async function listEvaluations(db: D1Database, candidateId: string) {
+  const candidate = await getCandidate(db, candidateId);
+  if (!candidate) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
+  const rows = await db
+    .prepare("SELECT * FROM evaluations WHERE candidate_id = ? ORDER BY created_at DESC")
+    .bind(candidateId)
+    .all<Record<string, unknown>>();
+  const itemsByEvaluation = await fetchEvaluationItems(db, rows.results.map((row) => String(row.evaluation_id)));
+  return { evaluations: rows.results.map((row) => apiEvaluation(row, itemsByEvaluation[String(row.evaluation_id)] ?? [])) };
+}
+
+async function getEvaluation(db: D1Database, evaluationId: string) {
+  const row = await db.prepare("SELECT * FROM evaluations WHERE evaluation_id = ?").bind(evaluationId).first<Record<string, unknown>>();
+  if (!row) throw new HttpError(404, "not_found", `Evaluation not found: ${evaluationId}`);
+  const itemsByEvaluation = await fetchEvaluationItems(db, [evaluationId]);
+  return { evaluation: apiEvaluation(row, itemsByEvaluation[evaluationId] ?? []) };
+}
+
+async function fetchEvaluationItems(db: D1Database, evaluationIds: string[]): Promise<Record<string, EvaluationItemRow[]>> {
+  if (evaluationIds.length === 0) return {};
+  const placeholders = evaluationIds.map(() => "?").join(", ");
+  const rows = await db
+    .prepare(`SELECT evaluation_id, item_key, score, comment FROM evaluation_items WHERE evaluation_id IN (${placeholders})`)
+    .bind(...evaluationIds)
+    .all<Record<string, unknown>>();
+  const grouped: Record<string, EvaluationItemRow[]> = {};
+  for (const row of rows.results) {
+    const id = String(row.evaluation_id);
+    (grouped[id] ??= []).push({ key: String(row.item_key ?? ""), score: Number(row.score ?? 0), comment: String(row.comment ?? "") });
+  }
+  return grouped;
+}
+
+function apiEvaluation(row: Record<string, unknown>, items: EvaluationItemRow[]) {
+  const ordered = EVALUATION_ITEM_KEYS
+    .map((key) => items.find((item) => item.key === key))
+    .filter((item): item is EvaluationItemRow => Boolean(item));
+  return {
+    evaluationId: row.evaluation_id ?? "",
+    candidateId: row.candidate_id ?? "",
+    evaluatorName: row.evaluator_name ?? "",
+    evalDate: row.eval_date ?? "",
+    jobRole: row.job_role ?? "",
+    totalScore: numberOrNull(row.total_score) ?? 0,
+    overallComment: row.overall_comment ?? "",
+    items: ordered,
+    createdBy: row.created_by ?? "",
+    createdAt: row.created_at ?? "",
+    updatedAt: row.updated_at ?? "",
+  };
+}
+
+async function registerEvaluator(db: D1Database, payload: Record<string, unknown>) {
+  const name = String(payload.name ?? "").trim();
+  if (!name) throw new HttpError(400, "validation", "評価者名を入力してください");
+  if (name.length > 100) throw new HttpError(400, "validation", "評価者名が長すぎます");
+  const existing = await db.prepare("SELECT evaluator_id, name FROM evaluators WHERE name = ?").bind(name).first<Record<string, unknown>>();
+  if (existing) {
+    return { evaluator: { evaluatorId: existing.evaluator_id ?? "", name: existing.name ?? name }, alreadyExists: true };
+  }
+  const evaluatorId = crypto.randomUUID();
+  await db.prepare("INSERT OR IGNORE INTO evaluators (evaluator_id, name, email, active) VALUES (?, ?, '', 1)").bind(evaluatorId, name).run();
+  return { evaluator: { evaluatorId, name } };
+}
+
+async function saveEvaluation(db: D1Database, context: Context) {
+  const payload = context.payload;
+  const candidateId = requireCandidateId(payload);
+  const candidate = await getCandidate(db, candidateId);
+  if (!candidate) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
+  const evaluatorName = String(payload.evaluatorName ?? "").trim();
+  if (!evaluatorName) throw new HttpError(400, "validation", "評価者名を入力してください");
+  const items = normalizeEvaluationItems(payload.items);
+  const total = items.reduce((sum, item) => sum + item.score, 0);
+  const evalDate = String(payload.evalDate ?? "").trim();
+  const jobRole = String(payload.jobRole ?? "").trim();
+  const overallComment = String(payload.overallComment ?? "");
+  const requestedId = String(payload.evaluationId ?? "").trim();
+  const now = nowIso();
+
+  let evaluationId = requestedId;
+  if (requestedId) {
+    const existing = await db.prepare("SELECT candidate_id FROM evaluations WHERE evaluation_id = ?").bind(requestedId).first<Record<string, unknown>>();
+    if (!existing) throw new HttpError(404, "not_found", `Evaluation not found: ${requestedId}`);
+    if (String(existing.candidate_id) !== candidateId) throw new HttpError(400, "validation", "candidateId does not match the evaluation");
+    await db
+      .prepare("UPDATE evaluations SET evaluator_name = ?, eval_date = ?, job_role = ?, total_score = ?, overall_comment = ?, updated_at = ? WHERE evaluation_id = ?")
+      .bind(evaluatorName, evalDate, jobRole, total, overallComment, now, requestedId)
+      .run();
+    await db.prepare("DELETE FROM evaluation_items WHERE evaluation_id = ?").bind(requestedId).run();
+  } else {
+    evaluationId = crypto.randomUUID();
+    await db
+      .prepare(
+        "INSERT INTO evaluations (evaluation_id, candidate_id, evaluator_name, evaluator_email, eval_date, job_role, total_score, overall_comment, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      )
+      .bind(evaluationId, candidateId, evaluatorName, "", evalDate, jobRole, total, overallComment, context.operator, now, now)
+      .run();
+  }
+  await db.batch(
+    items.map((item) =>
+      db.prepare("INSERT INTO evaluation_items (evaluation_id, item_key, score, comment) VALUES (?, ?, ?, ?)").bind(evaluationId, item.key, item.score, item.comment),
+    ),
+  );
+  const row = await db.prepare("SELECT * FROM evaluations WHERE evaluation_id = ?").bind(evaluationId).first<Record<string, unknown>>();
+  const itemsByEvaluation = await fetchEvaluationItems(db, [evaluationId]);
+  return { evaluation: apiEvaluation(row ?? {}, itemsByEvaluation[evaluationId] ?? []) };
+}
+
+function normalizeEvaluationItems(value: unknown): EvaluationItemRow[] {
+  if (!Array.isArray(value)) throw new HttpError(400, "validation", "items is required");
+  const map = new Map<string, EvaluationItemRow>();
+  for (const entry of value) {
+    const record = asRecord(entry);
+    const key = String(record.key ?? "").trim();
+    if (!EVALUATION_ITEM_KEYS.includes(key)) continue;
+    const score = Number(record.score);
+    if (!Number.isInteger(score) || score < 1 || score > 5) {
+      throw new HttpError(400, "validation", `評価点は1〜5で入力してください (${key})`);
+    }
+    map.set(key, { key, score, comment: String(record.comment ?? "") });
+  }
+  return EVALUATION_ITEM_KEYS.map((key) => {
+    const found = map.get(key);
+    if (!found) throw new HttpError(400, "validation", `評価要素 ${key} の点数が未入力です`);
+    return found;
+  });
+}
+
+async function deleteEvaluation(db: D1Database, payload: Record<string, unknown>) {
+  const evaluationId = requireEvaluationId(payload);
+  const existing = await db.prepare("SELECT candidate_id FROM evaluations WHERE evaluation_id = ?").bind(evaluationId).first<Record<string, unknown>>();
+  if (!existing) return { deleted: true, evaluationId, alreadyDeleted: true };
+  await db.prepare("DELETE FROM evaluation_items WHERE evaluation_id = ?").bind(evaluationId).run();
+  await db.prepare("DELETE FROM evaluations WHERE evaluation_id = ?").bind(evaluationId).run();
+  return { deleted: true, evaluationId, candidateId: existing.candidate_id ?? "" };
+}
+
+function requireEvaluationId(payload: Record<string, unknown>) {
+  const evaluationId = String(payload.evaluationId ?? "").trim();
+  if (!evaluationId) throw new HttpError(400, "validation", "evaluationId is required");
+  return evaluationId;
 }
 
 async function readMasters(db: D1Database, candidateId: string): Promise<MasterRows> {

@@ -11,6 +11,7 @@ const CandidateNewPage = lazy(() => import("@/pages/CandidateNewPage"));
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
 const ReviewPage = lazy(() => import("@/pages/ReviewPage"));
 const ResultPage = lazy(() => import("@/pages/ResultPage"));
+const EvaluationFormPage = lazy(() => import("@/pages/EvaluationFormPage"));
 
 function CandidateIndexRedirect() {
   const { id } = useParams();
@@ -65,6 +66,8 @@ function AuthGate() {
           <Route path="candidates/:id" element={<CandidateIndexRedirect />} />
           <Route path="candidates/:id/review" element={<ReviewPage />} />
           <Route path="candidates/:id/result" element={<ResultPage />} />
+          <Route path="candidates/:id/evaluation/new" element={<EvaluationFormPage />} />
+          <Route path="candidates/:id/evaluation/:evaluationId/edit" element={<EvaluationFormPage />} />
           <Route path="review" element={<Navigate to="/candidates?status=needs_review" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

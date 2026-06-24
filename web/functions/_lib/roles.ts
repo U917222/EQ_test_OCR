@@ -13,7 +13,13 @@ export type Action =
   | "finalize"
   | "saveDecision"
   | "getResultPdf"
-  | "exportBackup";
+  | "exportBackup"
+  | "listEvaluationMeta"
+  | "listEvaluations"
+  | "getEvaluation"
+  | "registerEvaluator"
+  | "saveEvaluation"
+  | "deleteEvaluation";
 
 const requiredRoles: Record<Action, Role | null> = {
   me: null,
@@ -29,6 +35,12 @@ const requiredRoles: Record<Action, Role | null> = {
   saveDecision: "reviewer",
   getResultPdf: "reviewer",
   exportBackup: "admin",
+  listEvaluationMeta: "operator",
+  listEvaluations: "operator",
+  getEvaluation: "operator",
+  registerEvaluator: "operator",
+  saveEvaluation: "operator",
+  deleteEvaluation: "reviewer",
 };
 
 const roleRank: Record<Role, number> = {
@@ -44,6 +56,9 @@ const writeActions = new Set<Action>([
   "deleteCandidate",
   "finalize",
   "saveDecision",
+  "registerEvaluator",
+  "saveEvaluation",
+  "deleteEvaluation",
 ]);
 
 export function isAction(value: string): value is Action {
