@@ -84,7 +84,7 @@ export function scoreCandidate(
   const crossCheck = Object.entries(itemTotals)
     .filter(([key, total]) => handwritten[key] !== undefined && handwritten[key] !== total)
     .map(([key, total]) => ({ item: key, computed: total, handwritten: Number(handwritten[key]) }));
-  const rank = calculateFallbackRank(itemStages, attitudeMinusPoints, rankStageKeys);
+  const rank = calculateFallbackRank(itemStages, rankStageKeys);
   const labels = Object.fromEntries(itemMaster.map((item) => [item.key, item.label]));
   const itemTotalsByLabel = labelKeyed(itemTotals, labels);
   const itemStagesByLabel = labelKeyed(itemStages, labels);
@@ -195,7 +195,6 @@ function computeRowScores(cells: Record<string, CellValue>) {
 
 function calculateFallbackRank(
   stages: Record<string, number | null>,
-  attitudeMinusPoints: number,
   rankStageKeys: Set<string>,
 ) {
   const values = Object.entries(stages)
@@ -203,13 +202,11 @@ function calculateFallbackRank(
     .map(([, value]) => value)
     .filter((value): value is number => typeof value === "number");
   if (!values.length) return { rank: "", note: "段階得点がありません" };
-  const min = Math.min(...values);
-  const average = values.reduce((sum, value) => sum + value, 0) / values.length;
   const low = values.filter((value) => value <= 2).length;
-  if (min <= 1 || low >= 3) return { rank: "D", note: "低段階項目が複数あります" };
-  if (low >= 1 || attitudeMinusPoints < 0 || average < 3) return { rank: "C", note: "注意項目があります" };
-  if (average < 4) return { rank: "B", note: "標準範囲です" };
-  return { rank: "A", note: "良好です" };
+  if (low <= 0) return { rank: "A", note: "段階2以下の項目はありません" };
+  if (low === 1) return { rank: "B", note: "段階2以下の項目が1件あります" };
+  if (low === 2) return { rank: "C", note: "段階2以下の項目が2件あります" };
+  return { rank: "D", note: "段階2以下の項目が3件以上あります" };
 }
 
 function labelKeyed<T>(values: Record<string, T>, labels: Record<string, string>) {

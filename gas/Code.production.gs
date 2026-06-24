@@ -1534,24 +1534,8 @@ function extractCells_(rawCellsRow) {
 }
 
 function calculateRank_(categoryStages, rankRules) {
-  const sortedRules = (rankRules || [])
-    .filter((row) => row.condition_json && row.rank)
-    .sort((a, b) => String(a.rule_id).localeCompare(String(b.rule_id)));
-
-  for (let i = 0; i < sortedRules.length; i += 1) {
-    const rule = sortedRules[i];
-    const condition = safeJsonParse_(rule.condition_json, null);
-    if (condition && evaluateRankCondition_(condition, categoryStages)) {
-      return {
-        rank: rule.rank,
-        minusPoints: rule.minus_points !== '' && rule.minus_points !== undefined
-          ? rule.minus_points
-          : calculateResponseAttitudeMinusPoints_(categoryStages),
-        note: rule.note || rule.label || '',
-      };
-    }
-  }
-
+  // 総合判定は①〜④の段階2以下の個数で固定する。
+  // 旧シートに残った RankRules があると古い判定が優先されるため、ここでは参照しない。
   return calculateFallbackRank_(categoryStages);
 }
 
@@ -1589,7 +1573,7 @@ function evaluateRankCondition_(condition, categoryStages) {
 }
 
 // 総合ランクの集計対象段階は①〜④のみ。
-// ⑤〜⑨は職務必要要件マイナスとして扱い、総合ランクの低段階判定・平均には含めない。
+// ⑤〜⑨は職務必要要件マイナスとして扱い、総合ランクの段階2以下カウントには含めない。
 // 応答態度は「段階が高いほど悪い」逆スケールのため除外する。
 // （応答態度を条件にしたい場合は {"category":"応答態度","gte":4} のように明示指定する）
 function rankStageValues_(categoryStages) {
@@ -1605,21 +1589,19 @@ function calculateFallbackRank_(categoryStages) {
     return { rank: '', minusPoints: '', note: '段階得点がありません' };
   }
 
-  const minStage = Math.min(...stages);
-  const average = stages.reduce((sum, value) => sum + value, 0) / stages.length;
   const lowStageCount = stages.filter((value) => value <= 2).length;
   const minusPoints = calculateResponseAttitudeMinusPoints_(categoryStages);
 
-  if (minStage <= 1 || lowStageCount >= 3) {
-    return { rank: 'D', minusPoints, note: '低段階項目が複数あります' };
+  if (lowStageCount <= 0) {
+    return { rank: 'A', minusPoints, note: '段階2以下の項目はありません' };
   }
-  if (lowStageCount >= 1 || minusPoints < 0 || average < 3) {
-    return { rank: 'C', minusPoints, note: '面接で注意項目を確認してください' };
+  if (lowStageCount === 1) {
+    return { rank: 'B', minusPoints, note: '段階2以下の項目が1件あります' };
   }
-  if (average >= 4) {
-    return { rank: 'A', minusPoints, note: '全体的に安定しています' };
+  if (lowStageCount === 2) {
+    return { rank: 'C', minusPoints, note: '段階2以下の項目が2件あります' };
   }
-  return { rank: 'B', minusPoints, note: '概ね標準範囲です' };
+  return { rank: 'D', minusPoints, note: '段階2以下の項目が3件以上あります' };
 }
 
 function calculateResponseAttitudeMinusPoints_(categoryStages) {

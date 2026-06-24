@@ -187,28 +187,8 @@ def cross_check(item_totals: dict[str, int], handwritten_totals: dict[str, int] 
 
 
 def calculate_rank(category_stages: dict[str, Any], rank_rules: list[dict] | None) -> dict[str, Any]:
-    sorted_rules = sorted(
-        [
-            row
-            for row in (rank_rules or [])
-            if row.get("condition_json") not in ("", None) and row.get("rank") not in ("", None)
-        ],
-        key=lambda row: str(row.get("rule_id", "")),
-    )
-
-    for rule in sorted_rules:
-        condition = _safe_json_parse(rule.get("condition_json"))
-        if condition and evaluate_rank_condition(condition, category_stages):
-            minus_points = (
-                rule.get("minus_points")
-                if rule.get("minus_points") not in ("", None)
-                else calculate_response_attitude_minus_points(category_stages)
-            )
-            return {
-                "rank": rule.get("rank"),
-                "minusPoints": minus_points,
-                "note": rule.get("note") or rule.get("label") or "",
-            }
+    # 総合判定は①〜④の段階2以下の個数で固定する。
+    # 旧シートに残った RankRules があると古い判定が優先されるため、ここでは参照しない。
     return calculate_fallback_rank(category_stages)
 
 
@@ -250,18 +230,16 @@ def calculate_fallback_rank(category_stages: dict[str, Any]) -> dict[str, Any]:
     if not stages:
         return {"rank": "", "minusPoints": "", "note": "段階得点がありません"}
 
-    min_stage = min(stages)
-    average = sum(stages) / len(stages)
     low_stage_count = len([value for value in stages if value <= 2])
     minus_points = calculate_response_attitude_minus_points(category_stages)
 
-    if min_stage <= 1 or low_stage_count >= 3:
-        return {"rank": "D", "minusPoints": minus_points, "note": "低段階項目が複数あります"}
-    if low_stage_count >= 1 or minus_points < 0 or average < 3:
-        return {"rank": "C", "minusPoints": minus_points, "note": "面接で注意項目を確認してください"}
-    if average >= 4:
-        return {"rank": "A", "minusPoints": minus_points, "note": "全体的に安定しています"}
-    return {"rank": "B", "minusPoints": minus_points, "note": "概ね標準範囲です"}
+    if low_stage_count <= 0:
+        return {"rank": "A", "minusPoints": minus_points, "note": "段階2以下の項目はありません"}
+    if low_stage_count == 1:
+        return {"rank": "B", "minusPoints": minus_points, "note": "段階2以下の項目が1件あります"}
+    if low_stage_count == 2:
+        return {"rank": "C", "minusPoints": minus_points, "note": "段階2以下の項目が2件あります"}
+    return {"rank": "D", "minusPoints": minus_points, "note": "段階2以下の項目が3件以上あります"}
 
 
 def calculate_response_attitude_minus_points(category_stages: dict[str, Any]) -> int:
