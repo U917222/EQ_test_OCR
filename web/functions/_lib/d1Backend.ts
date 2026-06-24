@@ -897,9 +897,12 @@ async function saveDecision(db: D1Database, candidateId: string, payload: Record
       .first();
     if (duplicate) throw new HttpError(409, "conflict", `職員番号 ${employeeNumber} は既に別の候補者に登録されています`);
   }
+  const decidedAt = nowIso();
   await db
-    .prepare("UPDATE candidates SET hiring_decision = ?, employee_number = ?, decision_by = ?, decision_at = ?, updated_at = ? WHERE candidate_id = ?")
-    .bind(decision, decision === "PASSED" ? employeeNumber : "", actor, nowIso(), nowIso(), candidateId)
+    .prepare(
+      "UPDATE candidates SET hiring_decision = ?, employee_number = ?, decision_by = ?, decision_at = ?, updated_at = ?, status = CASE WHEN ? = '' THEN status ELSE 'FINALIZED' END WHERE candidate_id = ?",
+    )
+    .bind(decision, decision === "PASSED" ? employeeNumber : "", actor, decidedAt, decidedAt, decision, candidateId)
     .run();
   const candidate = await getCandidate(db, candidateId);
   if (!candidate) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);

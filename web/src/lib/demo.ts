@@ -474,14 +474,16 @@ export async function getDemoResponse(action: string, payload: Record<string, un
       return { result: resultFor(String(payload.candidateId ?? "C-1003")) };
     case "saveDecision": {
       const base = candidates.find((c) => c.candidateId === payload.candidateId) ?? candidates[0];
+      const nextDecision = decisionFromPayload(payload.decision);
+      base.decision = nextDecision;
+      base.employeeNumber = nextDecision === "hire" && typeof payload.employeeNumber === "string" ? payload.employeeNumber : "";
+      base.decisionBy = DEMO_USER.email;
+      base.decisionAt = "2026-06-23T09:30:00+09:00";
+      base.status = "finalized";
+      base.updatedAt = "2026-06-23T09:30:00+09:00";
       return {
         candidate: {
           ...base,
-          decision: decisionFromPayload(payload.decision),
-          employeeNumber: typeof payload.employeeNumber === "string" ? payload.employeeNumber : base.employeeNumber,
-          decisionBy: DEMO_USER.email,
-          decisionAt: "2026-06-23T09:30:00+09:00",
-          status: "finalized",
         } satisfies Candidate,
       };
     }
