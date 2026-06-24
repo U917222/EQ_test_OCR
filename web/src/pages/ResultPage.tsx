@@ -28,7 +28,7 @@ import { decisionLabels, decisionVariant, rankVariant, stageTone, statusLabels, 
 import { postApi } from "@/lib/api";
 import { newOperationId } from "@/lib/operation";
 import { Candidate, CheqItem, Decision, GetResultResponse } from "@/lib/types";
-import { formatDate, formatDateTime } from "@/lib/utils";
+import { formatDate } from "@/lib/utils";
 
 type ResultPdfResponse = {
   filename: string;
@@ -251,8 +251,6 @@ export default function ResultPage() {
           <AttentionCard result={result} sourceUrl={sourceUrl} />
           <DecisionCard
             candidate={candidate}
-            finalizedBy={result.finalizedBy}
-            finalizedAt={result.finalizedAt}
             canReview={canReview}
             decision={decision}
             employeeNumber={employeeNumber}
@@ -425,8 +423,6 @@ function AttentionCard({
 
 function DecisionCard({
   candidate,
-  finalizedBy,
-  finalizedAt,
   canReview,
   decision,
   employeeNumber,
@@ -436,8 +432,6 @@ function DecisionCard({
   onSubmit,
 }: {
   candidate: Candidate;
-  finalizedBy?: string;
-  finalizedAt?: string;
   canReview: boolean;
   decision: Decision | "";
   employeeNumber: string;
@@ -491,11 +485,6 @@ function DecisionCard({
                   {currentDecision ? decisionLabels[currentDecision] : "未登録"}
                 </Badge>
               </div>
-              {finalizedBy || finalizedAt ? (
-                <div>
-                  監査: {finalizedBy ?? "-"} / {formatDateTime(finalizedAt)}
-                </div>
-              ) : null}
             </div>
             <Button type="submit" disabled={!canReview || isPending}>
               {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
