@@ -4,6 +4,8 @@ import { DEMO, getDemoResponse } from "@/lib/demo";
 type ApiSuccess<T> = T & { ok: true; idempotentReplay?: boolean };
 type ApiFailure = { ok: false; error: ApiErrorBody };
 
+const APP_PASSWORD_STORAGE_KEY = "cheq_app_password";
+
 export class ApiError extends Error {
   code: string;
   status: number;
@@ -58,6 +60,27 @@ export function isApiError(error: unknown): error is ApiError {
 }
 
 function passwordHeader(): Record<string, string> {
-  const password = localStorage.getItem("cheq_app_password")?.trim();
+  const password = readSessionPassword();
   return password ? { "X-App-Password": password } : {};
+}
+
+export function rememberSharedPassword(password: string): void {
+  try {
+    sessionStorage.setItem(APP_PASSWORD_STORAGE_KEY, password);
+  } catch {
+    // Browser storage can be disabled; the session cookie remains as fallback.
+  }
+  try {
+    localStorage.removeItem(APP_PASSWORD_STORAGE_KEY);
+  } catch {
+    // Ignore blocked persistent storage.
+  }
+}
+
+function readSessionPassword(): string {
+  try {
+    return sessionStorage.getItem(APP_PASSWORD_STORAGE_KEY)?.trim() ?? "";
+  } catch {
+    return "";
+  }
 }

@@ -85,9 +85,10 @@ def score_candidate(
 
     labels_by_key = {item["key"]: item["label"] for item in normalized_items}
     stages_by_label = _label_keyed(item_stages, labels_by_key)
-    # GAS evaluates RankRules against labels, but accepting item_key conditions is harmless.
-    category_stages = {**item_stages, **stages_by_label}
-    rank_result = calculate_rank(category_stages, rank_rules)
+    # 総合判定は項目ラベル①〜④だけを見る。item_key は混ぜない。
+    category_stages = stages_by_label
+    # rank_rules is kept in the public function shape because repositories still load the legacy sheet.
+    rank_result = calculate_fallback_rank(category_stages)
     rank_attitude_minus = _to_number(rank_result.get("minusPoints"), score_attitude_minus)
 
     notes = _build_result_notes(
@@ -184,45 +185,6 @@ def cross_check(item_totals: dict[str, int], handwritten_totals: dict[str, int] 
         if computed != handwritten:
             mismatches.append({"item": key, "computed": computed, "handwritten": handwritten})
     return mismatches
-
-
-def calculate_rank(category_stages: dict[str, Any], rank_rules: list[dict] | None) -> dict[str, Any]:
-    # 総合判定は①〜④の段階2以下の個数で固定する。
-    # 旧シートに残った RankRules があると古い判定が優先されるため、ここでは参照しない。
-    return calculate_fallback_rank(category_stages)
-
-
-def evaluate_rank_condition(condition: dict[str, Any], category_stages: dict[str, Any]) -> bool:
-    if condition.get("all") is not None:
-        return all(evaluate_rank_condition(item, category_stages) for item in condition["all"])
-    if condition.get("any") is not None:
-        return any(evaluate_rank_condition(item, category_stages) for item in condition["any"])
-    if condition.get("category") is not None:
-        stage = _to_number(category_stages.get(condition["category"]) or 0, 0)
-        if "eq" in condition:
-            return stage == _to_number(condition["eq"], math.nan)
-        if "lte" in condition:
-            return stage <= _to_number(condition["lte"], math.nan)
-        if "gte" in condition:
-            return stage >= _to_number(condition["gte"], math.nan)
-        if "lt" in condition:
-            return stage < _to_number(condition["lt"], math.nan)
-        if "gt" in condition:
-            return stage > _to_number(condition["gt"], math.nan)
-    if condition.get("min_stage_lte") is not None:
-        stages = _rank_stage_values(category_stages)
-        return bool(stages) and min(stages) <= _to_number(condition["min_stage_lte"], math.nan)
-    if condition.get("low_stage_count_gte") is not None:
-        threshold = _to_number(condition.get("threshold") or 2, 2)
-        count = len([value for value in _rank_stage_values(category_stages) if value <= threshold])
-        return count >= _to_number(condition["low_stage_count_gte"], math.nan)
-    if condition.get("average_stage_lt") is not None:
-        stages = _rank_stage_values(category_stages)
-        if not stages:
-            return False
-        average = sum(stages) / len(stages)
-        return average < _to_number(condition["average_stage_lt"], math.nan)
-    return False
 
 
 def calculate_fallback_rank(category_stages: dict[str, Any]) -> dict[str, Any]:
@@ -355,16 +317,6 @@ def _build_result_notes(
 
 def _label_keyed(values: dict[str, Any], labels_by_key: dict[str, str]) -> dict[str, Any]:
     return {labels_by_key.get(key, key): value for key, value in values.items()}
-
-
-def _safe_json_parse(value: Any) -> dict[str, Any] | None:
-    if isinstance(value, dict):
-        return value
-    try:
-        parsed = json.loads(str(value))
-    except (TypeError, ValueError):
-        return None
-    return parsed if isinstance(parsed, dict) else None
 
 
 def _parse_boolean(value: Any) -> bool:
