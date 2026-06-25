@@ -248,15 +248,15 @@ export default function DashboardPage() {
 
             <Card className="rounded-md">
               <CardHeader className="pb-3">
-                <CardTitle>職種別応募者数（{dashboard.year}年、単位: 人）</CardTitle>
-                <p className="text-sm text-slate-600">DBの `candidates.role` 上位8区分</p>
+                <CardTitle>地域別応募者数（{dashboard.year}年、単位: 人）</CardTitle>
+                <p className="text-sm text-slate-600">DBの `candidates.prefecture` / `city`（富山県のみ市町村別、上位10区分）</p>
               </CardHeader>
               <CardContent>
-                <div className="h-[260px]" role="img" aria-label={`${dashboard.year}年の職種別応募者数。`}>
+                <div className="h-[260px]" role="img" aria-label={`${dashboard.year}年の地域別応募者数。富山県は市町村別。`}>
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={dashboard.roleBreakdown} margin={{ top: 4, right: 16, left: -18, bottom: 0 }}>
+                    <BarChart data={dashboard.regionBreakdown} margin={{ top: 4, right: 16, left: -18, bottom: 40 }}>
                       <CartesianGrid stroke={COLORS.grid} vertical={false} />
-                      <XAxis dataKey="label" tickLine={false} axisLine={false} />
+                      <XAxis dataKey="label" tickLine={false} axisLine={false} interval={0} angle={-30} textAnchor="end" height={56} />
                       <YAxis allowDecimals={false} tickLine={false} axisLine={false} />
                       <Tooltip content={<ChartTooltip />} />
                       <Bar dataKey="value" name="応募者数" fill={COLORS.cyan} radius={[4, 4, 0, 0]} />

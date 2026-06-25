@@ -22,6 +22,7 @@ API_OPERATION_TTL_SECONDS = 30 * 24 * 60 * 60
 
 WRITE_ACTIONS = {
     "registerCandidate",
+    "updateCandidate",
     "saveCells",
     "updateStatus",
     "deleteCandidate",
@@ -36,6 +37,7 @@ REQUIRED_ROLES = {
     "getCells": "operator",
     "saveCells": "operator",
     "registerCandidate": "operator",
+    "updateCandidate": "operator",
     "getResult": "operator",
     "updateStatus": "operator",
     "deleteCandidate": "operator",

@@ -56,6 +56,10 @@ export type Candidate = {
   testDate: string;
   gender?: "male" | "female" | "other" | "unknown" | string;
   role?: string;
+  postalCode?: string;
+  prefecture?: string;
+  city?: string;
+  addressLine?: string;
   status: CandidateStatus;
   uploadedAt: string;
   decision?: Decision;
@@ -107,12 +111,29 @@ export type RegisterCandidatePayload = {
   name: string;
   testDate: string;
   gender?: Candidate["gender"];
+  postalCode?: string;
+  prefecture?: string;
+  city?: string;
+  addressLine?: string;
   memo?: string;
   file: {
     name: string;
     mimeType: string;
     base64: string;
   };
+  operationId: string;
+};
+
+export type UpdateCandidatePayload = {
+  candidateId: string;
+  name: string;
+  testDate: string;
+  gender?: Candidate["gender"];
+  postalCode?: string;
+  prefecture?: string;
+  city?: string;
+  addressLine?: string;
+  memo?: string;
   operationId: string;
 };
 
@@ -282,7 +303,7 @@ export type DashboardResponse = {
   };
   monthly: DashboardMonth[];
   statusBreakdown: Array<{ status: CandidateStatus | string; value: number }>;
-  roleBreakdown: Array<{ label: string; value: number }>;
+  regionBreakdown: Array<{ label: string; value: number }>;
   decisionBreakdown: Array<{ label: string; value: number }>;
   rankBreakdown: Array<{ rank: string; value: number }>;
   attentionItems: Array<{ label: string; value: number }>;

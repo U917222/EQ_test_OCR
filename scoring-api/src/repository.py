@@ -41,7 +41,12 @@ HEADERS = {
         "candidate_id",
         "name",
         "test_date",
+        "gender",
         "role",
+        "postal_code",
+        "prefecture",
+        "city",
+        "address_line",
         "uploaded_at",
         "status",
         "source_url",
@@ -190,12 +195,21 @@ def api_normalize_decision(decision: Any) -> str:
     return normalized.lower() if normalized else "hold"
 
 
+def normalize_candidate_gender(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    return normalized if normalized in {"male", "female", "other"} else ""
+
 def api_candidate_from_row(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "candidateId": row.get("candidate_id") or "",
         "name": row.get("name") or "",
         "testDate": serialize_date_like(row.get("test_date")),
+        "gender": row.get("gender") or "",
         "role": row.get("role") or "",
+        "postalCode": row.get("postal_code") or "",
+        "prefecture": row.get("prefecture") or "",
+        "city": row.get("city") or "",
+        "addressLine": row.get("address_line") or "",
         "status": api_normalize_candidate_status(row.get("status")),
         "uploadedAt": serialize_date_like(row.get("uploaded_at")),
         "decision": api_normalize_decision(row.get("hiring_decision")),
@@ -274,7 +288,12 @@ class ScoringRepository:
                 "candidate_id": candidate_id,
                 "name": payload.get("name") or "",
                 "test_date": payload.get("testDate") or "",
+                "gender": normalize_candidate_gender(payload.get("gender")),
                 "role": payload.get("role") or "",
+                "postal_code": payload.get("postalCode") or "",
+                "prefecture": payload.get("prefecture") or "",
+                "city": payload.get("city") or "",
+                "address_line": payload.get("addressLine") or "",
                 "uploaded_at": created_at,
                 "status": status,
                 "source_url": source_url,
@@ -300,6 +319,31 @@ class ScoringRepository:
             int(row["_row_number"]),
             {"source_url": source_url, "updated_at": now_iso()},
         )
+
+    def update_candidate_profile(self, candidate_id: str, payload: dict[str, Any]) -> dict[str, Any]:
+        row = self.get_candidate(candidate_id)
+        if not row:
+            raise RuntimeError(f"Candidate not found: {candidate_id}")
+        updated_at = now_iso()
+        self.update_row(
+            SHEETS["candidates"],
+            int(row["_row_number"]),
+            {
+                "name": str(payload.get("name") or "").strip(),
+                "test_date": str(payload.get("testDate") or "").strip(),
+                "gender": normalize_candidate_gender(payload.get("gender")),
+                "postal_code": str(payload.get("postalCode") or "").strip(),
+                "prefecture": str(payload.get("prefecture") or "").strip(),
+                "city": str(payload.get("city") or "").strip(),
+                "address_line": str(payload.get("addressLine") or "").strip(),
+                "memo": str(payload.get("memo") or "").strip(),
+                "updated_at": updated_at,
+            },
+        )
+        updated = self.get_candidate(candidate_id)
+        if not updated:
+            raise RuntimeError(f"Candidate not found: {candidate_id}")
+        return updated
 
     def import_recognition_result(self, candidate_id: str, recognition: dict[str, Any]) -> int:
         raw_row = self.get_raw_cells(candidate_id)

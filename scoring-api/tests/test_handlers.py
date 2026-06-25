@@ -305,6 +305,8 @@ class DashboardFakeRepo:
                 "name": "合格 太郎",
                 "test_date": "2026-03-10",
                 "role": "看護師",
+                "prefecture": "富山県",
+                "city": "富山市",
                 "status": "FINALIZED",
                 "uploaded_at": "2026-03-10T01:00:00+00:00",
                 "hiring_decision": "PASSED",
@@ -315,6 +317,8 @@ class DashboardFakeRepo:
                 "name": "レビュー 花子",
                 "test_date": "2026-07-20",
                 "role": "看護師",
+                "prefecture": "東京都",
+                "city": "新宿区",
                 "status": "REVIEW_REQUIRED",
                 "uploaded_at": "2026-07-20T01:00:00+00:00",
                 "hiring_decision": "",
@@ -402,6 +406,12 @@ def test_get_dashboard_returns_rich_shape():
     decision_labels = {item["label"]: item["value"] for item in response["decisionBreakdown"]}
     assert decision_labels == {"合格": 1, "不合格": 0, "未判定": 1}
     assert {item["label"] for item in response["attentionItems"]} == {"⑤積極性"}
+
+    assert "roleBreakdown" not in response
+    assert "attitudeStageBreakdown" not in response
+    # 富山県は市町村ラベル、県外は都道府県ラベルで集計される。
+    regions = {item["label"]: item["value"] for item in response["regionBreakdown"]}
+    assert regions == {"富山市": 1, "東京都": 1}
 
 
 def test_get_dashboard_respects_requested_year():

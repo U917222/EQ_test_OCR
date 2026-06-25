@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { decisionLabels, decisionVariant, statusLabels, statusVariant } from "@/lib/labels";
 import { Candidate, CandidateStatus } from "@/lib/types";
@@ -22,9 +22,11 @@ type Props = {
   canMove: boolean;
   onDelete?: (candidate: Candidate) => void;
   canDelete?: boolean;
+  onEdit?: (candidate: Candidate) => void;
+  canEdit?: boolean;
 };
 
-export function KanbanBoard({ candidates, onMove, canMove, onDelete, canDelete = false }: Props) {
+export function KanbanBoard({ candidates, onMove, canMove, onDelete, canDelete = false, onEdit, canEdit = false }: Props) {
   const navigate = useNavigate();
   const [dragId, setDragId] = useState<string | null>(null);
   const [overColumn, setOverColumn] = useState<CandidateStatus | null>(null);
@@ -105,6 +107,21 @@ export function KanbanBoard({ candidates, onMove, canMove, onDelete, canDelete =
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    {canEdit && onEdit && (
+                      <button
+                        type="button"
+                        className="rounded-md p-1 text-slate-300 transition hover:bg-indigo-50 hover:text-indigo-600 focus-visible:ring-2 focus-visible:ring-indigo-300"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onEdit(candidate);
+                        }}
+                        onKeyDown={(event) => event.stopPropagation()}
+                        title="候補者情報を編集"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        <span className="sr-only">候補者情報を編集</span>
+                      </button>
+                    )}
                     {canDelete && onDelete && (
                       <button
                         type="button"

@@ -7,24 +7,25 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { CandidateProfileForm, CandidateProfileFormValue } from "@/components/candidates/CandidateProfileForm";
 import { isApiError, postApi } from "@/lib/api";
 import { newOperationId } from "@/lib/operation";
 import { Candidate, RegisterCandidatePayload } from "@/lib/types";
 import { cn } from "@/lib/utils";
-
-type GenderFormValue = "unspecified" | "male" | "female" | "other";
 
 export default function CandidateNewPage() {
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [form, setForm] = useState({
+  const [form, setForm] = useState<CandidateProfileFormValue>({
     name: "",
     testDate: "",
-    gender: "unspecified" as GenderFormValue,
+    gender: "unspecified",
+    postalCode: "",
+    prefecture: "",
+    city: "",
+    addressLine: "",
     memo: "",
   });
 
@@ -86,6 +87,10 @@ export default function CandidateNewPage() {
       name: form.name,
       testDate: form.testDate,
       gender: form.gender === "unspecified" ? undefined : form.gender,
+      postalCode: form.postalCode || undefined,
+      prefecture: form.prefecture || undefined,
+      city: form.city || undefined,
+      addressLine: form.addressLine || undefined,
       memo: form.memo || undefined,
       file: {
         name: uploadFile.name,
@@ -149,51 +154,7 @@ export default function CandidateNewPage() {
           <CardTitle>候補者情報</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">氏名</Label>
-            <Input
-              id="name"
-              value={form.name}
-              onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))}
-              autoComplete="name"
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="testDate">受験日</Label>
-            <Input
-              id="testDate"
-              type="date"
-              value={form.testDate}
-              onChange={(event) => setForm((current) => ({ ...current, testDate: event.target.value }))}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="gender">性別</Label>
-            <Select
-              value={form.gender}
-              onValueChange={(value) => setForm((current) => ({ ...current, gender: value as GenderFormValue }))}
-            >
-              <SelectTrigger id="gender" aria-label="性別">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="unspecified">未選択</SelectItem>
-                <SelectItem value="male">男性</SelectItem>
-                <SelectItem value="female">女性</SelectItem>
-                <SelectItem value="other">その他</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="memo">メモ</Label>
-            <Textarea
-              id="memo"
-              value={form.memo}
-              onChange={(event) => setForm((current) => ({ ...current, memo: event.target.value }))}
-            />
-          </div>
+          <CandidateProfileForm value={form} onChange={setForm} disabled={mutation.isPending} />
           <Button type="submit" className="w-full" disabled={mutation.isPending}>
             {mutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileUp className="h-4 w-4" />}
             登録してレビューへ

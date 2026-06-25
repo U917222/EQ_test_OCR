@@ -9,6 +9,7 @@ const API_OPERATION_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 const API_WRITE_ACTIONS = {
   registerCandidate: true,
+  updateCandidate: true,
   saveCandidateFile: true,
   saveCells: true,
   updateStatus: true,
@@ -24,6 +25,7 @@ const API_REQUIRED_ROLES = {
   getCells: 'operator',
   saveCells: 'operator',
   registerCandidate: 'operator',
+  updateCandidate: 'operator',
   saveCandidateFile: 'operator',
   getResult: 'operator',
   updateStatus: 'operator',
@@ -145,6 +147,8 @@ function handleApiAction_(context) {
       return handleApiGetResult_(context.payload);
     case 'registerCandidate':
       return handleApiRegisterCandidate_(context.payload);
+    case 'updateCandidate':
+      return handleApiUpdateCandidate_(context.payload);
     case 'saveCandidateFile':
       return handleApiSaveCandidateFile_(context.payload);
     case 'saveCells':
@@ -230,13 +234,24 @@ function handleApiRegisterCandidate_(payload) {
   const registered = registerCandidate({
     name: payload.name,
     testDate: payload.testDate,
+    gender: payload.gender || '',
     role: payload.role || '',
+    postalCode: payload.postalCode || '',
+    prefecture: payload.prefecture || '',
+    city: payload.city || '',
+    addressLine: payload.addressLine || '',
     memo: payload.memo || '',
     file: payload.file || null,
   });
   const candidateId = registered.candidateId;
   const candidate = apiReadCandidate_(candidateId);
   return { candidate: { ...candidate, sourceUrl: registered.sourceUrl || '' } };
+}
+
+function handleApiUpdateCandidate_(payload) {
+  const candidateId = requireApiCandidateId_(payload);
+  const candidate = updateCandidateProfileInternal_(candidateId, payload);
+  return { candidate: apiCandidateFromRow_(candidate) };
 }
 
 function handleApiSaveCandidateFile_(payload) {
@@ -458,7 +473,12 @@ function apiCandidateFromRow_(row) {
     candidateId: row.candidate_id || '',
     name: row.name || '',
     testDate: apiSerializeDateLike_(row.test_date),
+    gender: row.gender || '',
     role: row.role || '',
+    postalCode: row.postal_code || '',
+    prefecture: row.prefecture || '',
+    city: row.city || '',
+    addressLine: row.address_line || '',
     status: apiNormalizeCandidateStatus_(row.status),
     uploadedAt: apiSerializeDateLike_(row.uploaded_at),
     decision: apiNormalizeDecision_(row.hiring_decision),

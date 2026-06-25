@@ -24,6 +24,10 @@ const candidates: Candidate[] = [
     testDate: "2026-01-18",
     gender: "female",
     role: "総合職",
+    postalCode: "100-0001",
+    prefecture: "東京都",
+    city: "千代田区",
+    addressLine: "千代田1-1 サンプルハイツ101",
     status: "needs_review",
     uploadedAt: "2026-01-18T09:12:00+09:00",
     updatedAt: "2026-01-18T09:20:00+09:00",
@@ -35,6 +39,10 @@ const candidates: Candidate[] = [
     testDate: "2026-02-17",
     gender: "male",
     role: "一般職",
+    postalCode: "930-0002",
+    prefecture: "富山県",
+    city: "富山市",
+    addressLine: "新富町1-2-3",
     status: "finalized",
     decision: "hire",
     employeeNumber: "E-2026-014",
@@ -49,6 +57,10 @@ const candidates: Candidate[] = [
     testDate: "2026-03-17",
     gender: "female",
     role: "技術職",
+    postalCode: "933-0000",
+    prefecture: "富山県",
+    city: "高岡市",
+    addressLine: "末広町2-5",
     status: "scored",
     uploadedAt: "2026-03-17T11:30:00+09:00",
     updatedAt: "2026-03-18T16:40:00+09:00",
@@ -59,6 +71,10 @@ const candidates: Candidate[] = [
     testDate: "2026-04-16",
     gender: "male",
     role: "総合職",
+    postalCode: "530-0001",
+    prefecture: "大阪府",
+    city: "大阪市北区",
+    addressLine: "梅田1-1",
     status: "finalized",
     decision: "reject",
     decisionBy: "tanaka@goseikai.jp",
@@ -72,6 +88,10 @@ const candidates: Candidate[] = [
     testDate: "2026-05-16",
     gender: "female",
     role: "一般職",
+    postalCode: "939-8201",
+    prefecture: "富山県",
+    city: "富山市",
+    addressLine: "山室1-10",
     status: "finalized",
     decision: "hire",
     decisionBy: "tanaka@goseikai.jp",
@@ -85,6 +105,10 @@ const candidates: Candidate[] = [
     testDate: "2026-06-19",
     gender: "male",
     role: "技術職",
+    postalCode: "920-0001",
+    prefecture: "石川県",
+    city: "金沢市",
+    addressLine: "千木町1-1",
     status: "uploaded",
     uploadedAt: "2026-06-19T08:05:00+09:00",
     updatedAt: "2026-06-19T08:05:00+09:00",
@@ -330,7 +354,7 @@ function getDashboardResponse(yearInput?: unknown): DashboardResponse {
     passRate: 0,
   }));
   const byStatus: Record<string, number> = {};
-  const byRole: Record<string, number> = {};
+  const byRegion: Record<string, number> = {};
   const byRank: Record<string, number> = {};
   const attentionItems: Record<string, number> = {};
   let hired = 0;
@@ -362,7 +386,8 @@ function getDashboardResponse(yearInput?: unknown): DashboardResponse {
       rejected += 1;
     }
     byStatus[candidate.status] = (byStatus[candidate.status] ?? 0) + 1;
-    byRole[candidate.role || "未設定"] = (byRole[candidate.role || "未設定"] ?? 0) + 1;
+    const region = demoRegion(candidate.prefecture ?? "", candidate.city ?? "");
+    byRegion[region] = (byRegion[region] ?? 0) + 1;
 
     if (!["uploaded", "recognizing", "needs_review"].includes(candidate.status)) {
       const result = resultFor(candidate.candidateId);
@@ -415,7 +440,7 @@ function getDashboardResponse(yearInput?: unknown): DashboardResponse {
     },
     monthly,
     statusBreakdown: Object.entries(byStatus).map(([status, value]) => ({ status, value })),
-    roleBreakdown: Object.entries(byRole).map(([label, value]) => ({ label, value })).sort(sortDemoBreakdown).slice(0, 8),
+    regionBreakdown: Object.entries(byRegion).map(([label, value]) => ({ label, value })).sort(sortDemoBreakdown).slice(0, 10),
     decisionBreakdown: [
       { label: "合格", value: hired },
       { label: "不合格", value: rejected },
@@ -430,6 +455,13 @@ function getDashboardResponse(yearInput?: unknown): DashboardResponse {
 function normalizeDemoGender(value: Candidate["gender"]): "male" | "female" | "other" | "unknown" {
   if (value === "male" || value === "female" || value === "other") return value;
   return "unknown";
+}
+
+// 富山県だけは市町村粒度で見たいので市区町村ラベル、それ以外は都道府県でまとめる。
+function demoRegion(prefecture: string, city: string): string {
+  if (!prefecture) return "未設定";
+  if (prefecture === "富山県") return city || "富山県（市町村未設定）";
+  return prefecture;
 }
 
 function sortDemoBreakdown(a: { label: string; value: number }, b: { label: string; value: number }) {
@@ -463,11 +495,29 @@ export async function getDemoResponse(action: string, payload: Record<string, un
           testDate: String(payload.testDate ?? "2026-06-23"),
           gender: typeof payload.gender === "string" ? payload.gender : undefined,
           role: String(payload.role ?? "総合職"),
+          postalCode: typeof payload.postalCode === "string" ? payload.postalCode : undefined,
+          prefecture: typeof payload.prefecture === "string" ? payload.prefecture : undefined,
+          city: typeof payload.city === "string" ? payload.city : undefined,
+          addressLine: typeof payload.addressLine === "string" ? payload.addressLine : undefined,
+          memo: typeof payload.memo === "string" ? payload.memo : undefined,
           status: "uploaded",
           uploadedAt: "2026-06-23T09:00:00+09:00",
           updatedAt: "2026-06-23T09:00:00+09:00",
         } satisfies Candidate,
       };
+    case "updateCandidate": {
+      const target = candidates.find((c) => c.candidateId === payload.candidateId) ?? candidates[0];
+      target.name = String(payload.name ?? target.name);
+      target.testDate = String(payload.testDate ?? target.testDate);
+      target.gender = typeof payload.gender === "string" ? payload.gender : undefined;
+      target.postalCode = typeof payload.postalCode === "string" ? payload.postalCode : "";
+      target.prefecture = typeof payload.prefecture === "string" ? payload.prefecture : "";
+      target.city = typeof payload.city === "string" ? payload.city : "";
+      target.addressLine = typeof payload.addressLine === "string" ? payload.addressLine : "";
+      target.memo = typeof payload.memo === "string" ? payload.memo : "";
+      target.updatedAt = "2026-06-23T10:15:00+09:00";
+      return { candidate: { ...target } satisfies Candidate };
+    }
     case "saveCells":
       return { saved: true };
     case "finalize":

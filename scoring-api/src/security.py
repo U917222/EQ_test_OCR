@@ -111,6 +111,7 @@ def authorize(action: str, role: str) -> None:
         "getResult": "operator",
         "getResultPdf": "reviewer",
         "registerCandidate": "operator",
+        "updateCandidate": "operator",
         "saveCells": "operator",
         "updateStatus": "operator",
         "deleteCandidate": "operator",

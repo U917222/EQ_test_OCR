@@ -22,7 +22,12 @@ const HEADERS = {
     'candidate_id',
     'name',
     'test_date',
+    'gender',
     'role',
+    'postal_code',
+    'prefecture',
+    'city',
+    'address_line',
     'uploaded_at',
     'status',
     'source_url',
@@ -31,6 +36,7 @@ const HEADERS = {
     'employee_number',
     'decision_by',
     'decision_at',
+    'updated_at',
   ],
   RawCells: [
     'candidate_id',
@@ -274,11 +280,17 @@ function registerCandidate(payload, accessCode) {
       candidate_id: candidateId,
       name: payload.name,
       test_date: payload.testDate,
+      gender: normalizeCandidateGender_(payload.gender),
       role: payload.role || '',
+      postal_code: payload.postalCode || '',
+      prefecture: payload.prefecture || '',
+      city: payload.city || '',
+      address_line: payload.addressLine || '',
       uploaded_at: uploadedAt,
       status: sourceUrl ? 'UPLOADED' : 'REGISTERED',
       source_url: sourceUrl,
       memo: payload.memo || '',
+      updated_at: uploadedAt,
     });
 
     appendObject_(ss.getSheetByName(SHEETS.rawCells), {
@@ -303,6 +315,54 @@ function registerCandidate(payload, accessCode) {
   }
 
   return { ok: true, candidateId, sourceUrl };
+}
+
+function updateCandidateProfile(candidateId, payload, accessCode) {
+  assertAuthorizedUser_(accessCode);
+  return updateCandidateProfileInternal_(candidateId, payload);
+}
+
+function updateCandidateProfileInternal_(candidateId, payload) {
+  assertWorkbookReady_();
+  if (!candidateId) throw new Error('candidateId is required');
+  validateRequired_(payload, ['name', 'testDate']);
+  const testDate = String(payload.testDate || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(testDate)) throw new Error('testDate must be YYYY-MM-DD');
+
+  const lock = getWorkbookLock_();
+  lock.waitLock(30000);
+  try {
+    const ss = getWorkbook_();
+    const sheet = ss.getSheetByName(SHEETS.candidates);
+    const table = readTable_(sheet);
+    const rowIndex = table.rows.findIndex((row) => row.candidate_id === candidateId);
+    if (rowIndex < 0) throw new Error(`Candidate not found: ${candidateId}`);
+    const rowNumber = rowIndex + 2;
+    const updatedAt = new Date();
+    const patch = {
+      name: String(payload.name || '').trim(),
+      test_date: testDate,
+      gender: normalizeCandidateGender_(payload.gender),
+      postal_code: String(payload.postalCode || '').trim(),
+      prefecture: String(payload.prefecture || '').trim(),
+      city: String(payload.city || '').trim(),
+      address_line: String(payload.addressLine || '').trim(),
+      memo: String(payload.memo || '').trim(),
+      updated_at: updatedAt,
+    };
+    Object.keys(patch).forEach((header) => {
+      if (table.headers.includes(header)) setCellByHeader_(sheet, table.headers, rowNumber, header, patch[header]);
+    });
+    logAudit_('UPDATE_CANDIDATE_PROFILE', candidateId, patch);
+  } finally {
+    lock.releaseLock();
+  }
+  return findById_(getWorkbook_().getSheetByName(SHEETS.candidates), 'candidate_id', candidateId);
+}
+
+function normalizeCandidateGender_(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['male', 'female', 'other'].includes(normalized) ? normalized : '';
 }
 
 function startRecognition(candidateId, accessCode) {
@@ -457,6 +517,7 @@ function registerHiringDecision(candidateId, decision, employeeNumber, accessCod
     setCellByHeader_(sheet, table.headers, rowNumber, 'employee_number', storedEmployeeNumber);
     setCellByHeader_(sheet, table.headers, rowNumber, 'decision_by', actor);
     setCellByHeader_(sheet, table.headers, rowNumber, 'decision_at', decidedAt);
+    if (table.headers.includes('updated_at')) setCellByHeader_(sheet, table.headers, rowNumber, 'updated_at', decidedAt);
     if (normalizedDecision) {
       setCellByHeader_(sheet, table.headers, rowNumber, 'status', 'FINALIZED');
     }
@@ -1519,6 +1580,7 @@ function updateCandidateStatus_(ss, candidateId, status) {
   const rowIndex = table.rows.findIndex((row) => row.candidate_id === candidateId);
   if (rowIndex >= 0) {
     setCellByHeader_(sheet, table.headers, rowIndex + 2, 'status', status);
+    if (table.headers.includes('updated_at')) setCellByHeader_(sheet, table.headers, rowIndex + 2, 'updated_at', new Date());
   }
 }
 
