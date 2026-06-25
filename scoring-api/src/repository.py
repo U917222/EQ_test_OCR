@@ -135,6 +135,15 @@ API_TO_STATUS = {
 }
 
 
+def _col_letter(n: int) -> str:
+    """1-indexed の列番号をスプレッドシートの列レター（A, B, ..., Z, AA, ...）に変換する。"""
+    result = ""
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        result = chr(ord("A") + remainder) + result
+    return result
+
+
 def now_iso() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
 
@@ -242,17 +251,33 @@ class ScoringRepository:
         self.sheets.clear_values(sheet_name)
         self.sheets.update_values(sheet_name, table_to_values(headers, rows), "A1")
 
-    def append_object(self, sheet_name: str, obj: dict[str, Any]) -> None:
+    def ensure_headers(self, sheet_name: str) -> list[str]:
+        """実シートの row 1 に canonical 列が欠けていれば末尾に追記し、完全なヘッダーリストを返す。
+
+        不足が無ければ一切書き込まない（冪等）。シートが HEADERS に無い場合や
+        ヘッダー行が空の場合はそのまま返す。
+        """
         table = self.read_table(sheet_name)
-        headers = table.headers or HEADERS[sheet_name]
+        canonical = HEADERS.get(sheet_name)
+        if not canonical or not table.headers:
+            return table.headers or (canonical or [])
+        missing = [h for h in canonical if h not in table.headers]
+        if not missing:
+            return table.headers
+        start_col = _col_letter(len(table.headers) + 1)
+        self.sheets.update_values(sheet_name, [missing], f"{start_col}1")
+        return table.headers + missing
+
+    def append_object(self, sheet_name: str, obj: dict[str, Any]) -> None:
+        headers = self.ensure_headers(sheet_name)
         self.sheets.append_values(
             sheet_name,
             [[sanitize_sheet_value(obj.get(header, "")) for header in headers]],
         )
 
     def update_row(self, sheet_name: str, row_number: int, patch: dict[str, Any]) -> None:
+        headers = self.ensure_headers(sheet_name)
         table = self.read_table(sheet_name)
-        headers = table.headers or HEADERS[sheet_name]
         row = next((item for item in table.rows if item.get("_row_number") == row_number), None)
         current = {header: "" for header in headers}
         if row:
