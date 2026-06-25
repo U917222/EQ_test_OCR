@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FilePlus2, LayoutGrid, List, Loader2, Search, Trash2 } from "lucide-react";
+import { FilePlus2, LayoutGrid, List, Loader2, Pencil, Search, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ export default function CandidatesPage() {
   const queryClient = useQueryClient();
   const { can } = useAuth();
   const canMove = can("operator");
+  const canEdit = can("operator");
   const canDelete = can("operator");
 
   // カンバンでは全ステータスを列として並べるため status フィルタは無視する。
@@ -148,6 +149,11 @@ export default function CandidatesPage() {
     const target = candidates.find((candidate) => candidate.candidateId === candidateId);
     if (!target || target.status === toStatus) return;
     moveMutation.mutate({ candidateId, status: toStatus });
+  };
+
+  const editCandidate = (candidate: Candidate) => {
+    if (!canEdit) return;
+    navigate(`/candidates/${candidate.candidateId}/edit`);
   };
 
   const requestDelete = (candidate: Candidate) => {
@@ -263,6 +269,8 @@ export default function CandidatesPage() {
           canMove={canMove}
           onDelete={requestDelete}
           canDelete={canDelete}
+          onEdit={editCandidate}
+          canEdit={canEdit}
         />
       ) : (
         <Card>
@@ -275,7 +283,7 @@ export default function CandidatesPage() {
                   <TableHead>ステータス</TableHead>
                   <TableHead>判定</TableHead>
                   <TableHead>更新</TableHead>
-                  {canDelete && <TableHead className="text-right">操作</TableHead>}
+                  {(canEdit || canDelete) && <TableHead className="text-right">操作</TableHead>}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -302,23 +310,43 @@ export default function CandidatesPage() {
                       </Badge>
                     </TableCell>
                     <TableCell>{formatDateTime(candidate.updatedAt ?? candidate.uploadedAt)}</TableCell>
-                    {canDelete && (
+                    {(canEdit || canDelete) && (
                       <TableCell className="text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="text-red-600 hover:bg-red-50 hover:text-red-700"
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            requestDelete(candidate);
-                          }}
-                          onKeyDown={(event) => event.stopPropagation()}
-                          title="候補者を削除"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          削除
-                        </Button>
+                        <div className="flex justify-end gap-1">
+                          {canEdit && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                editCandidate(candidate);
+                              }}
+                              onKeyDown={(event) => event.stopPropagation()}
+                              title="候補者情報を編集"
+                            >
+                              <Pencil className="h-4 w-4" />
+                              編集
+                            </Button>
+                          )}
+                          {canDelete && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                requestDelete(candidate);
+                              }}
+                              onKeyDown={(event) => event.stopPropagation()}
+                              title="候補者を削除"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                              削除
+                            </Button>
+                          )}
+                        </div>
                       </TableCell>
                     )}
                   </TableRow>

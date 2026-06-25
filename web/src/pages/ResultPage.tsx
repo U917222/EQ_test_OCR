@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Download, ExternalLink, FileText, Loader2, Save } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, ExternalLink, FileText, Loader2, Pencil, Save } from "lucide-react";
 import {
   CartesianGrid,
   LabelList,
@@ -185,8 +185,15 @@ export default function ResultPage() {
               </Badge>
             </div>
             <p className="mt-1 text-sm text-slate-600">受験日: {formatDate(candidate.testDate)}</p>
+            <CandidateProfileSummary candidate={candidate} />
           </div>
           <div className="flex flex-wrap gap-2">
+            <Button asChild variant="outline">
+              <Link to={`/candidates/${id}/edit`}>
+                <Pencil className="h-4 w-4" />
+                候補者情報
+              </Link>
+            </Button>
             <Button asChild variant="outline">
               <Link to={`/candidates/${id}/review`}>
                 <FileText className="h-4 w-4" />
@@ -273,6 +280,30 @@ export default function ResultPage() {
       <EvaluationSection candidateId={id} />
     </div>
   );
+}
+
+function CandidateProfileSummary({ candidate }: { candidate: Candidate }) {
+  const address = formatAddress(candidate);
+  const rows = [
+    genderLabel(candidate.gender) ? `性別: ${genderLabel(candidate.gender)}` : "",
+    address ? `住所: ${address}` : "",
+    candidate.memo ? `メモ: ${candidate.memo}` : "",
+  ].filter(Boolean);
+  if (!rows.length) return null;
+  return <p className="mt-2 max-w-3xl text-sm text-slate-600">{rows.join(" / ")}</p>;
+}
+
+function genderLabel(value: Candidate["gender"]) {
+  if (value === "male") return "男性";
+  if (value === "female") return "女性";
+  if (value === "other") return "その他";
+  return "";
+}
+
+function formatAddress(candidate: Candidate) {
+  return [candidate.postalCode ? `〒${candidate.postalCode}` : "", candidate.prefecture, candidate.city, candidate.addressLine]
+    .filter(Boolean)
+    .join(" ");
 }
 
 function MetricCard({

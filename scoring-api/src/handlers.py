@@ -31,6 +31,7 @@ def dispatch(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:
         "getCells": handle_get_cells,
         "getResult": handle_get_result,
         "registerCandidate": handle_register_candidate,
+        "updateCandidate": handle_update_candidate,
         "saveCells": handle_save_cells,
         "updateStatus": handle_update_status,
         "deleteCandidate": handle_delete_candidate,
@@ -100,6 +101,18 @@ def _round_half_up(value: float) -> int:
     return int(math.floor(value + 0.5))
 
 
+# 富山県だけは市町村粒度で見たいので市区町村ラベル、それ以外は都道府県でまとめる。
+TOYAMA_PREFECTURE = "富山県"
+
+
+def _dashboard_region(prefecture: str, city: str) -> str:
+    if not prefecture:
+        return "未設定"
+    if prefecture == TOYAMA_PREFECTURE:
+        return city or "富山県（市町村未設定）"
+    return prefecture
+
+
 def handle_get_dashboard(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:
     requested_year = number_or_null(context.payload.get("year"))
     # Candidates / Results / ReviewQueue を1回の batchGet でまとめて読む（往復を3→1に削減）。
@@ -150,7 +163,7 @@ def handle_get_dashboard(context: ApiContext, repo: ScoringRepository) -> dict[s
         for index in range(12)
     ]
     by_status: dict[str, int] = {}
-    by_role: dict[str, int] = {}
+    by_region: dict[str, int] = {}
     by_rank: dict[str, int] = {}
     attention_items: dict[str, int] = {}
 
@@ -167,8 +180,11 @@ def handle_get_dashboard(context: ApiContext, repo: ScoringRepository) -> dict[s
         status = str(candidate.get("status") or "uploaded")
         by_status[status] = by_status.get(status, 0) + 1
 
-        role = str(candidate.get("role") or "").strip() or "未設定"
-        by_role[role] = by_role.get(role, 0) + 1
+        region = _dashboard_region(
+            str(candidate.get("prefecture") or "").strip(),
+            str(candidate.get("city") or "").strip(),
+        )
+        by_region[region] = by_region.get(region, 0) + 1
 
         decision = candidate.get("decision")
         if decision == "hire":
@@ -199,10 +215,11 @@ def handle_get_dashboard(context: ApiContext, repo: ScoringRepository) -> dict[s
         month = _dashboard_month(candidate)
         if month:
             row = monthly[month - 1]
-            # gender 列が Sheets に無いため全員 unknown 扱い。
-            row["unknown"] += 1
+            gender = dashboard_gender(candidate.get("gender"))
+            row[gender] += 1
             row["total"] += 1
-            gender_unknown += 1
+            if gender == "unknown":
+                gender_unknown += 1
             if status == "finalized":
                 row["finalized"] += 1
             if status == "needs_review":
@@ -265,10 +282,10 @@ def handle_get_dashboard(context: ApiContext, repo: ScoringRepository) -> dict[s
         },
         "monthly": monthly,
         "statusBreakdown": [{"status": status, "value": value} for status, value in by_status.items()],
-        "roleBreakdown": [
+        "regionBreakdown": [
             {"label": label, "value": value}
-            for label, value in sorted(by_role.items(), key=lambda kv: (-kv[1], kv[0]))
-        ][:8],
+            for label, value in sorted(by_region.items(), key=lambda kv: (-kv[1], kv[0]))
+        ][:10],
         "decisionBreakdown": [
             {"label": "合格", "value": hired},
             {"label": "不合格", "value": rejected},
@@ -370,6 +387,15 @@ def handle_register_candidate(context: ApiContext, repo: ScoringRepository) -> d
         response["result"] = result
     return response
 
+
+def handle_update_candidate(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:
+    candidate_id = require_candidate_id(context.payload)
+    validate_candidate_profile_payload(context.payload)
+    try:
+        candidate = repo.update_candidate_profile(candidate_id, context.payload)
+    except RuntimeError as error:
+        raise ApiError("not_found", str(error)) from error
+    return {"candidate": api_candidate_from_row(candidate)}
 
 def handle_save_cells(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:
     candidate_id = require_candidate_id(context.payload)
@@ -485,6 +511,28 @@ def handle_get_result_pdf(context: ApiContext, repo: ScoringRepository) -> dict[
         "base64": base64.b64encode(pdf_bytes).decode("ascii"),
     }
 
+
+def validate_candidate_profile_payload(payload: dict[str, Any]) -> None:
+    name = str(payload.get("name") or "").strip()
+    test_date = str(payload.get("testDate") or "").strip()
+    if not name:
+        raise ApiError("validation", "name is required")
+    if not test_date:
+        raise ApiError("validation", "testDate is required")
+    import re
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", test_date):
+        raise ApiError("validation", "testDate must be YYYY-MM-DD")
+
+
+def dashboard_gender(value: Any) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {"male", "m", "man", "men", "男性", "男"}:
+        return "male"
+    if normalized in {"female", "f", "woman", "women", "女性", "女"}:
+        return "female"
+    if normalized in {"other", "その他", "回答しない", "非回答"}:
+        return "other"
+    return "unknown"
 
 def require_candidate_id(payload: dict[str, Any]) -> str:
     candidate_id = candidate_id_from_payload(payload)

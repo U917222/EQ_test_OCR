@@ -8,6 +8,7 @@ import { isApiError, rememberSharedPassword } from "@/lib/api";
 
 const CandidatesPage = lazy(() => import("@/pages/CandidatesPage"));
 const CandidateNewPage = lazy(() => import("@/pages/CandidateNewPage"));
+const CandidateEditPage = lazy(() => import("@/pages/CandidateEditPage"));
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
 const ReviewPage = lazy(() => import("@/pages/ReviewPage"));
 const ResultPage = lazy(() => import("@/pages/ResultPage"));
@@ -65,6 +66,7 @@ function AuthGate() {
           <Route path="candidates" element={<CandidatesPage />} />
           <Route path="candidates/new" element={<CandidateNewPage />} />
           <Route path="candidates/:id" element={<CandidateIndexRedirect />} />
+          <Route path="candidates/:id/edit" element={<CandidateEditPage />} />
           <Route path="candidates/:id/review" element={<ReviewPage />} />
           <Route path="candidates/:id/result" element={<ResultPage />} />
           <Route path="candidates/:id/evaluation/new" element={<EvaluationFormPage />} />

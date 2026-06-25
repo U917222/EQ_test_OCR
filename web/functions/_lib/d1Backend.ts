@@ -29,6 +29,7 @@ const REQUIRED_ROLES: Record<Action, Role> = {
   getResult: "operator",
   getResultPdf: "reviewer",
   registerCandidate: "operator",
+  updateCandidate: "operator",
   saveCells: "operator",
   updateStatus: "operator",
   deleteCandidate: "operator",
@@ -109,6 +110,8 @@ async function handleAction(
       return getResult(db, requireCandidateId(context.payload));
     case "registerCandidate":
       return registerCandidate(env, context);
+    case "updateCandidate":
+      return updateCandidate(db, requireCandidateId(context.payload), context.payload);
     case "saveCells":
       return saveCells(db, requireCandidateId(context.payload), context.payload.cells);
     case "updateStatus":
@@ -219,6 +222,11 @@ async function listCandidates(db: D1Database, payload: Record<string, unknown>) 
       test_date,
       gender,
       role,
+      postal_code,
+      prefecture,
+      city,
+      address_line,
+      memo,
       status,
       uploaded_at,
       hiring_decision,
@@ -242,6 +250,13 @@ function apiStatusToStoredStatus(value: unknown): string | null {
   const status = String(value ?? "").trim().toLowerCase();
   if (!status || status === "all") return null;
   return API_TO_STATUS[status] ?? "__INVALID_STATUS__";
+}
+
+// 富山県だけは市町村粒度で見たいので市区町村ラベル、それ以外は都道府県でまとめる。
+function dashboardRegion(prefecture: string, city: string): string {
+  if (!prefecture) return "未設定";
+  if (prefecture === "富山県") return city || "富山県（市町村未設定）";
+  return prefecture;
 }
 
 async function getDashboard(db: D1Database, payload: Record<string, unknown>) {
@@ -298,7 +313,7 @@ async function getDashboard(db: D1Database, payload: Record<string, unknown>) {
     passRate: 0,
   }));
   const byStatus: Record<string, number> = {};
-  const byRole: Record<string, number> = {};
+  const byRegion: Record<string, number> = {};
   const byRank: Record<string, number> = {};
   const attentionItems: Record<string, number> = {};
 
@@ -317,8 +332,8 @@ async function getDashboard(db: D1Database, payload: Record<string, unknown>) {
     const status = String(candidate.status || "uploaded");
     byStatus[status] = (byStatus[status] ?? 0) + 1;
 
-    const role = String(candidate.role ?? "").trim() || "未設定";
-    byRole[role] = (byRole[role] ?? 0) + 1;
+    const region = dashboardRegion(String(candidate.prefecture ?? "").trim(), String(candidate.city ?? "").trim());
+    byRegion[region] = (byRegion[region] ?? 0) + 1;
 
     const decision = normalizeDecision(row.hiring_decision);
     if (decision === "hire") hired += 1;
@@ -395,7 +410,7 @@ async function getDashboard(db: D1Database, payload: Record<string, unknown>) {
     },
     monthly,
     statusBreakdown: Object.entries(byStatus).map(([status, value]) => ({ status, value })),
-    roleBreakdown: Object.entries(byRole).map(([label, value]) => ({ label, value })).sort(sortBreakdown).slice(0, 8),
+    regionBreakdown: Object.entries(byRegion).map(([label, value]) => ({ label, value })).sort(sortBreakdown).slice(0, 10),
     decisionBreakdown: [
       { label: "合格", value: hired },
       { label: "不合格", value: rejected },
@@ -470,9 +485,24 @@ async function registerCandidate(env: Env, context: Context) {
   let storedFile: StoredFile | null = null;
   await db
     .prepare(
-      "INSERT INTO candidates (candidate_id, name, test_date, gender, role, uploaded_at, status, source_url, memo, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO candidates (candidate_id, name, test_date, gender, role, postal_code, prefecture, city, address_line, uploaded_at, status, source_url, memo, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
-    .bind(candidateId, payload.name, payload.testDate, normalizeGenderInput(payload.gender), payload.role ?? "", createdAt, "REVIEW_REQUIRED", "", payload.memo ?? "", createdAt)
+    .bind(
+      candidateId,
+      normalizeRequiredText(payload.name, "name"),
+      normalizeTestDate(payload.testDate),
+      normalizeGenderInput(payload.gender),
+      normalizeOptionalText(payload.role),
+      normalizeOptionalText(payload.postalCode),
+      normalizeOptionalText(payload.prefecture),
+      normalizeOptionalText(payload.city),
+      normalizeOptionalText(payload.addressLine),
+      createdAt,
+      "REVIEW_REQUIRED",
+      "",
+      normalizeOptionalText(payload.memo),
+      createdAt,
+    )
     .run();
   try {
     storedFile = preparedFile
@@ -531,18 +561,22 @@ async function registerCandidateWithGasDrive(
 
   await db
     .prepare(
-      "INSERT INTO candidates (candidate_id, name, test_date, gender, role, uploaded_at, status, source_url, memo, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      "INSERT INTO candidates (candidate_id, name, test_date, gender, role, postal_code, prefecture, city, address_line, uploaded_at, status, source_url, memo, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(
       candidateId,
-      context.payload.name,
-      context.payload.testDate,
+      normalizeRequiredText(context.payload.name, "name"),
+      normalizeTestDate(context.payload.testDate),
       normalizeGenderInput(context.payload.gender ?? gasCandidate.gender),
-      context.payload.role ?? "",
+      normalizeOptionalText(context.payload.role),
+      normalizeOptionalText(context.payload.postalCode),
+      normalizeOptionalText(context.payload.prefecture),
+      normalizeOptionalText(context.payload.city),
+      normalizeOptionalText(context.payload.addressLine),
       gasCandidate.uploadedAt ?? createdAt,
       "REVIEW_REQUIRED",
       sourceUrl,
-      context.payload.memo ?? "",
+      normalizeOptionalText(context.payload.memo),
       createdAt,
     )
     .run();
@@ -774,6 +808,34 @@ async function prepareCandidateFile(file: Record<string, unknown>, maxBytes: num
   }
 
   return { filename, contentType, bytes };
+}
+
+async function updateCandidate(db: D1Database, candidateId: string, payload: Record<string, unknown>) {
+  const current = await getCandidate(db, candidateId);
+  if (!current) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
+  const updatedAt = nowIso();
+  await db
+    .prepare(
+      `UPDATE candidates
+       SET name = ?, test_date = ?, gender = ?, postal_code = ?, prefecture = ?, city = ?, address_line = ?, memo = ?, updated_at = ?
+       WHERE candidate_id = ?`,
+    )
+    .bind(
+      normalizeRequiredText(payload.name, "name"),
+      normalizeTestDate(payload.testDate),
+      normalizeGenderInput(payload.gender),
+      normalizeOptionalText(payload.postalCode),
+      normalizeOptionalText(payload.prefecture),
+      normalizeOptionalText(payload.city),
+      normalizeOptionalText(payload.addressLine),
+      normalizeOptionalText(payload.memo),
+      updatedAt,
+      candidateId,
+    )
+    .run();
+  const candidate = await getCandidate(db, candidateId);
+  if (!candidate) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
+  return { candidate: apiCandidate(candidate) };
 }
 
 async function saveCells(db: D1Database, candidateId: string, rawCells: unknown) {
@@ -1157,6 +1219,10 @@ function apiCandidate(row: Record<string, unknown>) {
     testDate: row.test_date ?? "",
     gender: row.gender ?? "",
     role: row.role ?? "",
+    postalCode: row.postal_code ?? "",
+    prefecture: row.prefecture ?? "",
+    city: row.city ?? "",
+    addressLine: row.address_line ?? "",
     status: STATUS_TO_API[String(row.status ?? "").toUpperCase()] ?? String(row.status ?? "").toLowerCase(),
     uploadedAt: row.uploaded_at ?? "",
     decision: normalizeDecision(row.hiring_decision),
@@ -1172,6 +1238,24 @@ function normalizeGenderInput(value: unknown) {
   const normalized = String(value ?? "").trim().toLowerCase();
   if (["male", "female", "other"].includes(normalized)) return normalized;
   return "";
+}
+
+function normalizeRequiredText(value: unknown, field: string) {
+  const text = String(value ?? "").trim();
+  if (!text) throw new HttpError(400, "validation", `${field} is required`);
+  return text;
+}
+
+function normalizeOptionalText(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function normalizeTestDate(value: unknown) {
+  const text = normalizeRequiredText(value, "testDate");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    throw new HttpError(400, "validation", "testDate must be YYYY-MM-DD");
+  }
+  return text;
 }
 
 function detailedResult(candidate: Record<string, unknown>, result: Record<string, unknown>) {
