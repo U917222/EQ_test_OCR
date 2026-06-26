@@ -26,6 +26,15 @@ export function normalizeZipcode(input: string): string | null {
   return digits.length === 7 ? digits : null;
 }
 
+export function mergeAutoTown(currentAddressLine: string, previousTown: string, nextTown: string): string {
+  if (!nextTown) return currentAddressLine;
+  if (!currentAddressLine) return nextTown;
+  if (previousTown && currentAddressLine.startsWith(previousTown)) {
+    return nextTown + currentAddressLine.slice(previousTown.length);
+  }
+  return currentAddressLine;
+}
+
 /**
  * 郵便番号から住所（都道府県・市区町村・町域）を引く。
  * 形式不正・該当なし・通信失敗はすべて null を返す（呼び出し側で手入力にフォールバック）。

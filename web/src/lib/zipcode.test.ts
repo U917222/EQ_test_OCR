@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { lookupZipcode, normalizeZipcode } from "./zipcode";
+import { lookupZipcode, mergeAutoTown, normalizeZipcode } from "./zipcode";
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -15,6 +15,32 @@ describe("normalizeZipcode", () => {
     expect(normalizeZipcode("930")).toBeNull();
     expect(normalizeZipcode("12345678")).toBeNull();
     expect(normalizeZipcode("")).toBeNull();
+  });
+});
+
+describe("mergeAutoTown", () => {
+  it("empty currentAddressLine returns nextTown", () => {
+    expect(mergeAutoTown("", "新総曲輪", "本丸")).toBe("本丸");
+  });
+
+  it("currentAddressLine exactly matching previousTown returns nextTown", () => {
+    expect(mergeAutoTown("新総曲輪", "新総曲輪", "本丸")).toBe("本丸");
+  });
+
+  it("currentAddressLine starting with previousTown replaces only the town prefix", () => {
+    expect(mergeAutoTown("新総曲輪1-2-3 ○○マンション", "新総曲輪", "本丸")).toBe("本丸1-2-3 ○○マンション");
+  });
+
+  it("manual input not starting with previousTown is unchanged", () => {
+    expect(mergeAutoTown("手入力1-2-3", "新総曲輪", "本丸")).toBe("手入力1-2-3");
+  });
+
+  it("empty nextTown leaves currentAddressLine unchanged", () => {
+    expect(mergeAutoTown("新総曲輪1-2-3", "新総曲輪", "")).toBe("新総曲輪1-2-3");
+  });
+
+  it("empty previousTown leaves currentAddressLine unchanged", () => {
+    expect(mergeAutoTown("新総曲輪1-2-3", "", "本丸")).toBe("新総曲輪1-2-3");
   });
 });
 
