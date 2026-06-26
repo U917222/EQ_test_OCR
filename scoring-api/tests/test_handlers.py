@@ -1,6 +1,10 @@
 from types import SimpleNamespace
 
+import pytest
+
 from src.handlers import (
+    finalize_candidate,
+    handle_attach_scoresheet,
     handle_delete_candidate,
     handle_get_dashboard,
     handle_get_cells,
@@ -171,6 +175,7 @@ def test_register_candidate_with_clean_upload_auto_finalizes(monkeypatch):
 
     assert response["candidate"]["candidateId"] == "cand-1"
     assert response["candidate"]["status"] == "finalized"
+    assert response["candidate"]["sourceUrl"] == "https://drive.google.com/file/d/uploaded/view"
     assert response["result"]["candidateId"] == "cand-1"
 
 
@@ -217,7 +222,101 @@ def test_register_candidate_persists_upload_before_recognition(monkeypatch):
 
     assert captured["stored_candidate_id"] == "cand-1"
     assert repo.candidate["source_url"] == "https://drive.google.com/file/d/uploaded/view"
+    assert response["candidate"]["sourceUrl"] == "https://drive.google.com/file/d/uploaded/view"
     assert response["candidate"]["status"] == "needs_review"
+
+
+def test_attach_scoresheet_with_clean_upload_auto_finalizes(monkeypatch):
+    def fake_recognize_upload_file(file_payload):
+        return {
+            "cells": {key: {"value": 1, "confidence": 0.99} for key in CELL_KEYS},
+            "confidenceAvg": 0.99,
+            "unresolvedCount": 0,
+            "pageIndex": 0,
+            "imageLinks": {},
+        }
+
+    monkeypatch.setattr("src.upload_recognition.recognize_upload_file", fake_recognize_upload_file)
+    monkeypatch.setattr(
+        "src.upload_storage.save_upload_file",
+        lambda file_payload, candidate_id: {
+            "sourceUrl": "https://drive.google.com/file/d/attached/view",
+            "mimeType": "application/pdf",
+        },
+    )
+    repo = FakeRepo()
+    context = ApiContext(
+        claims={},
+        payload={
+            "candidateId": "cand-1",
+            "file": {"name": "scoresheet.pdf", "mimeType": "application/pdf", "base64": "JVBERi0="},
+        },
+        action="attachScoresheet",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-attach",
+    )
+
+    response = handle_attach_scoresheet(context, repo)
+
+    assert response["candidate"]["candidateId"] == "cand-1"
+    assert response["candidate"]["status"] == "finalized"
+    assert response["candidate"]["sourceUrl"] == "https://drive.google.com/file/d/attached/view"
+    assert response["result"]["candidateId"] == "cand-1"
+    assert repo.candidate["source_url"] == "https://drive.google.com/file/d/attached/view"
+
+
+def test_attach_scoresheet_missing_candidate_returns_not_found():
+    class MissingCandidateRepo(FakeRepo):
+        def get_candidate(self, candidate_id):
+            assert candidate_id == "missing-cand"
+            return None
+
+    context = ApiContext(
+        claims={},
+        payload={
+            "candidateId": "missing-cand",
+            "file": {"name": "scoresheet.pdf", "mimeType": "application/pdf", "base64": "JVBERi0="},
+        },
+        action="attachScoresheet",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-attach",
+    )
+
+    with pytest.raises(Exception) as error:
+        handle_attach_scoresheet(context, MissingCandidateRepo())
+
+    assert error.value.code == "not_found"
+
+
+def test_attach_scoresheet_finalized_candidate_returns_validation():
+    repo = FakeRepo()
+    repo.candidate["status"] = "FINALIZED"
+    context = ApiContext(
+        claims={},
+        payload={
+            "candidateId": "cand-1",
+            "file": {"name": "scoresheet.pdf", "mimeType": "application/pdf", "base64": "JVBERi0="},
+        },
+        action="attachScoresheet",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-attach",
+    )
+
+    with pytest.raises(Exception) as error:
+        handle_attach_scoresheet(context, repo)
+
+    assert error.value.code == "validation"
+    assert error.value.message == "既に採点が確定しているため採点用紙を添付できません。"
+
+
+def test_finalize_rejects_empty_raw_cells():
+    with pytest.raises(Exception) as error:
+        finalize_candidate("cand-1", "reviewer@example.com", FakeRepo())
+
+    assert error.value.code == "validation"
 
 
 def test_delete_candidate_removes_candidate_related_rows():

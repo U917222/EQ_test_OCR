@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CheckCircle2, Download, ExternalLink, FileText, Loader2, Pencil, Save } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Download, ExternalLink, FileText, FileUp, Loader2, Pencil, Save } from "lucide-react";
 import {
   CartesianGrid,
   LabelList,
@@ -26,9 +26,10 @@ import { useAuth } from "@/lib/auth";
 import { normalizeGetResultResponse } from "@/lib/api-normalizers";
 import { buildProfileChartData, CHEQ_ITEMS, traitCopyForStage } from "@/lib/cheq";
 import { decisionLabels, decisionVariant, rankVariant, stageTone, statusLabels, statusVariant } from "@/lib/labels";
-import { postApi } from "@/lib/api";
+import { isApiError, postApi } from "@/lib/api";
 import { newOperationId } from "@/lib/operation";
-import { Candidate, CheqItem, Decision, GetResultResponse } from "@/lib/types";
+import { AttachScoresheetPayload, Candidate, CheqItem, Decision, GetResultResponse } from "@/lib/types";
+import { prepareUploadFile } from "@/lib/upload";
 import { formatDate } from "@/lib/utils";
 
 type ResultPdfResponse = {
@@ -41,10 +42,12 @@ export default function ResultPage() {
   const { id = "" } = useParams();
   const { can } = useAuth();
   const queryClient = useQueryClient();
+  const canOperate = can("operator");
   const canReview = can("reviewer");
   const [decision, setDecision] = useState<Decision | "">("");
   const [employeeNumber, setEmployeeNumber] = useState("");
   const autoFinalizeStarted = useRef(false);
+  const attachInputRef = useRef<HTMLInputElement>(null);
 
   const query = useQuery({
     queryKey: ["result", id],
@@ -54,9 +57,7 @@ export default function ResultPage() {
     refetchInterval: (queryState) => {
       const payload = queryState.state.data as GetResultResponse | undefined;
       const status = payload?.result?.status ?? payload?.candidate?.status;
-      return status === "uploaded" || status === "recognizing" || (status === "scored" && !payload?.result)
-        ? 3000
-        : false;
+      return status === "recognizing" ? 3000 : false;
     },
   });
 
@@ -121,12 +122,45 @@ export default function ResultPage() {
     onError: () => toast.error("採点を確定できませんでした"),
   });
 
+  const attachScoresheetMutation = useMutation({
+    mutationFn: async (file: File) => {
+      const uploadFile = await prepareUploadFile(file);
+      const payload: AttachScoresheetPayload = {
+        candidateId: id,
+        file: uploadFile,
+        operationId: newOperationId(),
+      };
+      return postApi<AttachScoresheetPayload, { candidate: Candidate; result?: unknown }>("attachScoresheet", payload);
+    },
+    onSuccess: () => {
+      toast.success("採点用紙をアップロードしました");
+      queryClient.invalidateQueries({ queryKey: ["result", id] });
+    },
+    onError: (error) => toast.error(isApiError(error) ? error.message : "採点用紙をアップロードできませんでした"),
+  });
+
   useEffect(() => {
     const status = query.data?.result?.status ?? query.data?.candidate?.status;
-    if (!canReview || query.data?.result || status !== "scored" || autoFinalizeStarted.current) return;
+    const hasSourceUrl = Boolean(query.data?.candidate?.sourceUrl || query.data?.sourceUrl);
+    if (
+      !canReview ||
+      query.data?.result ||
+      !hasSourceUrl ||
+      status !== "scored" ||
+      autoFinalizeStarted.current
+    ) return;
     autoFinalizeStarted.current = true;
     finalizeMutation.mutate();
   }, [canReview, finalizeMutation, query.data]);
+
+  const selectScoresheet = (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/") && file.type !== "application/pdf") {
+      toast.error("画像またはPDFを選択してください");
+      return;
+    }
+    attachScoresheetMutation.mutate(file);
+  };
 
   const submitDecision = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -169,8 +203,11 @@ export default function ResultPage() {
   }
 
   const { candidate, rawCellSummary, result, sourceUrl } = data;
+  const scoresheetUrl = candidate.sourceUrl || sourceUrl;
   const status = result?.status ?? candidate.status;
   const currentDecision = normalizeDecision(candidate.decision);
+  const isTestNotStarted = result === null && !scoresheetUrl;
+  const isRecognizing = !isTestNotStarted && (status === "uploaded" || status === "recognizing");
 
   return (
     <div className="space-y-6">
@@ -217,14 +254,51 @@ export default function ResultPage() {
         <Card>
           <CardContent className="flex min-h-72 flex-col items-center justify-center p-8 text-center">
             <h2 className="text-lg font-semibold">
-              {status === "uploaded" || status === "recognizing" ? "OCRで読み取り中です" : "まだ採点が確定していません"}
+              {isTestNotStarted
+                ? "テスト未実施"
+                : isRecognizing
+                  ? "OCRで読み取り中です"
+                  : "まだ採点が確定していません"}
             </h2>
             <p className="mt-2 max-w-xl text-sm text-slate-600">
-              {status === "uploaded" || status === "recognizing"
+              {isTestNotStarted
+                ? "採点用紙をアップロードしてOCRするか、採点画面でセルを手入力してください。"
+                : isRecognizing
                 ? "読み取りが完了すると自動で画面を更新します。確認が不要な場合はそのまま採点確定へ進みます。"
                 : "セル確認と採点確定が完了すると、総合判定、プロフィール、確認事項、合否登録が表示されます。"}
             </p>
-            {status === "scored" && canReview ? (
+            <Input
+              ref={attachInputRef}
+              type="file"
+              accept="image/*,application/pdf"
+              className="hidden"
+              disabled={!canOperate || attachScoresheetMutation.isPending}
+              onChange={(event) => {
+                selectScoresheet(event.target.files?.[0]);
+                event.target.value = "";
+              }}
+            />
+            {isTestNotStarted ? (
+              <div className="mt-5 flex flex-col gap-2 sm:flex-row">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => attachInputRef.current?.click()}
+                  disabled={!canOperate || attachScoresheetMutation.isPending}
+                  title={!canOperate ? "operator以上のみアップロードできます" : undefined}
+                >
+                  {attachScoresheetMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <FileUp className="h-4 w-4" />
+                  )}
+                  採点用紙をアップロード
+                </Button>
+                <Button asChild>
+                  <Link to={`/candidates/${id}/review`}>採点する</Link>
+                </Button>
+              </div>
+            ) : status === "scored" && canReview ? (
               <Button className="mt-5" onClick={() => finalizeMutation.mutate()} disabled={finalizeMutation.isPending}>
                 {finalizeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                 採点を確定
@@ -260,7 +334,7 @@ export default function ResultPage() {
           </div>
 
           <ProfileCard result={result} />
-          <AttentionCard result={result} sourceUrl={sourceUrl} />
+          <AttentionCard result={result} sourceUrl={scoresheetUrl} />
           <DecisionCard
             candidate={candidate}
             canReview={canReview}

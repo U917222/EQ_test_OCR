@@ -23,6 +23,7 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { normalizeGetCellsResponse } from "@/lib/api-normalizers";
 import { useAuth } from "@/lib/auth";
+import { areAllCellsEmpty } from "@/lib/cells";
 import { confidenceTone } from "@/lib/labels";
 import { isApiError, postApi } from "@/lib/api";
 import { newOperationId } from "@/lib/operation";
@@ -98,6 +99,7 @@ export default function ReviewPage() {
   );
   const orderKeys = showAllCells ? allKeys : queue;
   const progress = reviewProgress(queue, states);
+  const allCellsEmpty = areAllCellsEmpty(cells, edited);
 
   // 数字ボタンの候補値: 実データの検出値から導出し、基本の 0〜3 を必ず含める。
   const quickValues = useMemo(() => {
@@ -210,6 +212,14 @@ export default function ReviewPage() {
     });
   };
 
+  const finalize = () => {
+    if (allCellsEmpty) {
+      toast.error("テスト結果が未入力です。先に採点用紙のアップロードまたはセル入力を行ってください。");
+      return;
+    }
+    finalizeMutation.mutate();
+  };
+
   if (query.isLoading) {
     return (
       <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
@@ -237,6 +247,7 @@ export default function ReviewPage() {
   const currentDoc = pages[pageIdx] ?? pages[0];
   const docIsPdf = isPdfDocument(imageLinks.mimeType, currentDoc);
   const allDone = progress.total > 0 && progress.resolved >= progress.total;
+  const canFinalize = can("reviewer") && !allCellsEmpty;
 
   return (
     <div ref={containerRef} className="space-y-5 outline-none" onKeyDown={handleKeyDown} tabIndex={-1}>
@@ -259,9 +270,15 @@ export default function ReviewPage() {
             変更を保存
           </Button>
           <Button
-            onClick={() => finalizeMutation.mutate()}
-            disabled={!can("reviewer") || finalizeMutation.isPending}
-            title={!can("reviewer") ? "reviewer以上のみ確定できます" : undefined}
+            onClick={finalize}
+            disabled={!canFinalize || finalizeMutation.isPending}
+            title={
+              !can("reviewer")
+                ? "reviewer以上のみ確定できます"
+                : allCellsEmpty
+                  ? "テスト結果を入力してから確定してください"
+                  : undefined
+            }
           >
             {finalizeMutation.isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -313,7 +330,9 @@ export default function ReviewPage() {
       {orderKeys.length === 0 ? (
         <Card>
           <CardContent className="flex min-h-40 flex-col items-center justify-center p-6 text-center text-sm text-slate-600">
-            要確認セルはありません。そのまま採点を確定できます。
+            {allCellsEmpty
+              ? "採点セルが未入力です。全セルを表示して数値を入力してください。"
+              : "要確認セルはありません。そのまま採点を確定できます。"}
           </CardContent>
         </Card>
       ) : (

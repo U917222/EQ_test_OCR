@@ -31,6 +31,7 @@ def dispatch(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:
         "getCells": handle_get_cells,
         "getResult": handle_get_result,
         "registerCandidate": handle_register_candidate,
+        "attachScoresheet": handle_attach_scoresheet,
         "updateCandidate": handle_update_candidate,
         "saveCells": handle_save_cells,
         "updateStatus": handle_update_status,
@@ -346,46 +347,76 @@ def handle_register_candidate(context: ApiContext, repo: ScoringRepository) -> d
     candidate = repo.create_candidate(context.payload)
     result = None
     if context.payload.get("file"):
-        source_url = str(candidate.get("source_url") or "").strip()
-        file_payload = context.payload.get("file") if isinstance(context.payload.get("file"), dict) else {}
-        stored_mime_type = str(file_payload.get("mimeType") or file_payload.get("contentType") or "").split(";")[0].strip().lower()
-        if not source_url:
-            try:
-                from src.upload_storage import save_upload_file
-            except ImportError as error:
-                raise ApiError("internal", "src.upload_storage.save_upload_file is not available") from error
-
-            stored_upload = save_upload_file(context.payload.get("file"), str(candidate["candidate_id"]))
-            source_url = stored_upload["sourceUrl"]
-            stored_mime_type = stored_upload["mimeType"]
-            repo.update_candidate_source_url(str(candidate["candidate_id"]), source_url)
-            candidate = repo.get_candidate(str(candidate["candidate_id"])) or candidate
-
-        try:
-            from src.upload_recognition import recognize_upload_file
-        except ImportError as error:
-            raise ApiError("internal", "src.upload_recognition.recognize_upload_file is not available") from error
-
-        recognition = recognize_upload_file(context.payload.get("file"))
-        if recognition:
-            if source_url:
-                image_links = recognition.get("imageLinks") if isinstance(recognition.get("imageLinks"), dict) else {}
-                recognition["imageLinks"] = {
-                    "original": source_url,
-                    "preview": source_url,
-                    "pages": [source_url],
-                    "mimeType": stored_mime_type,
-                    **image_links,
-                }
-            unresolved_count = repo.import_recognition_result(str(candidate["candidate_id"]), recognition)
-            if unresolved_count == 0:
-                result = finalize_candidate(str(candidate["candidate_id"]), context.operator, repo)["result"]
-            candidate = repo.get_candidate(str(candidate["candidate_id"])) or candidate
+        candidate, result = process_scoresheet_upload(candidate, context.payload.get("file"), context.operator, repo)
 
     response = {"candidate": api_candidate_from_row(candidate)}
     if result:
         response["result"] = result
     return response
+
+
+def handle_attach_scoresheet(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:
+    candidate_id = require_candidate_id(context.payload)
+    file_payload = context.payload.get("file")
+    if not file_payload:
+        raise ApiError("validation", "file is required")
+    candidate = repo.get_candidate(candidate_id)
+    if not candidate:
+        raise ApiError("not_found", f"Candidate not found: {candidate_id}")
+    if api_normalize_candidate_status(candidate.get("status")) == "finalized":
+        raise ApiError("validation", "既に採点が確定しているため採点用紙を添付できません。")
+
+    candidate, result = process_scoresheet_upload(candidate, file_payload, context.operator, repo)
+    response = {"candidate": api_candidate_from_row(candidate)}
+    if result:
+        response["result"] = result
+    return response
+
+
+def process_scoresheet_upload(
+    candidate: dict[str, Any],
+    file_payload: Any,
+    operator: str,
+    repo: ScoringRepository,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    result = None
+    candidate_id = str(candidate["candidate_id"])
+    source_url = str(candidate.get("source_url") or "").strip()
+    file_info = file_payload if isinstance(file_payload, dict) else {}
+    stored_mime_type = str(file_info.get("mimeType") or file_info.get("contentType") or "").split(";")[0].strip().lower()
+    if not source_url:
+        try:
+            from src.upload_storage import save_upload_file
+        except ImportError as error:
+            raise ApiError("internal", "src.upload_storage.save_upload_file is not available") from error
+
+        stored_upload = save_upload_file(file_payload, candidate_id)
+        source_url = stored_upload["sourceUrl"]
+        stored_mime_type = stored_upload["mimeType"]
+        repo.update_candidate_source_url(candidate_id, source_url)
+        candidate = repo.get_candidate(candidate_id) or candidate
+
+    try:
+        from src.upload_recognition import recognize_upload_file
+    except ImportError as error:
+        raise ApiError("internal", "src.upload_recognition.recognize_upload_file is not available") from error
+
+    recognition = recognize_upload_file(file_payload)
+    if recognition:
+        if source_url:
+            image_links = recognition.get("imageLinks") if isinstance(recognition.get("imageLinks"), dict) else {}
+            recognition["imageLinks"] = {
+                "original": source_url,
+                "preview": source_url,
+                "pages": [source_url],
+                "mimeType": stored_mime_type,
+                **image_links,
+            }
+        unresolved_count = repo.import_recognition_result(candidate_id, recognition)
+        if unresolved_count == 0:
+            result = finalize_candidate(candidate_id, operator, repo)["result"]
+        candidate = repo.get_candidate(candidate_id) or candidate
+    return candidate, result
 
 
 def handle_update_candidate(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:
@@ -461,6 +492,8 @@ def finalize_candidate(candidate_id: str, actor: str, repo: ScoringRepository) -
     if unresolved > 0:
         raise ApiError("validation", f"Unresolved review items remain: {unresolved}")
     cells = extract_cells(raw_cells)
+    if not any(cell.get("value") is not None for cell in cells.values()):
+        raise ApiError("validation", "テスト結果が未入力です。先に採点用紙のアップロードまたはセル入力を行ってください。")
     masters = repo.read_masters(candidate_id)
 
     try:

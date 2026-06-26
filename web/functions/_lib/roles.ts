@@ -7,6 +7,7 @@ export type Action =
   | "getCells"
   | "getResult"
   | "registerCandidate"
+  | "attachScoresheet"
   | "updateCandidate"
   | "saveCells"
   | "updateStatus"
@@ -29,6 +30,7 @@ const requiredRoles: Record<Action, Role | null> = {
   getCells: "operator",
   getResult: "operator",
   registerCandidate: "operator",
+  attachScoresheet: "operator",
   updateCandidate: "operator",
   saveCells: "operator",
   updateStatus: "operator",
@@ -53,6 +55,7 @@ const roleRank: Record<Role, number> = {
 
 const writeActions = new Set<Action>([
   "registerCandidate",
+  "attachScoresheet",
   "updateCandidate",
   "saveCells",
   "updateStatus",
