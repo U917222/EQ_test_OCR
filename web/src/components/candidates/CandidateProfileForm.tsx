@@ -1,4 +1,4 @@
-import { Dispatch, SetStateAction, useState } from "react";
+import { Dispatch, SetStateAction, useRef, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { lookupZipcode } from "@/lib/zipcode";
+import { lookupZipcode, mergeAutoTown } from "@/lib/zipcode";
 
 export type GenderFormValue = "unspecified" | "male" | "female" | "other";
 
@@ -29,6 +29,7 @@ type Props = {
 
 export function CandidateProfileForm({ value, onChange, disabled = false }: Props) {
   const [looking, setLooking] = useState(false);
+  const lastAutoTownRef = useRef<string>("");
 
   const update = (field: keyof CandidateProfileFormValue, nextValue: string) => {
     onChange((current) => ({ ...current, [field]: nextValue }));
@@ -46,12 +47,14 @@ export function CandidateProfileForm({ value, onChange, disabled = false }: Prop
         toast.error("住所が見つかりませんでした。郵便番号をご確認ください");
         return;
       }
-      // 都道府県・市区町村は上書き、番地は未入力時のみ町域で補完（ユーザー入力を尊重）。
+      // 都道府県・市区町村は上書き、前回自動補完した町域だけを差し替える。
+      const previousTown = lastAutoTownRef.current;
+      lastAutoTownRef.current = result.town;
       onChange((current) => ({
         ...current,
         prefecture: result.prefecture,
         city: result.city,
-        addressLine: current.addressLine || result.town,
+        addressLine: mergeAutoTown(current.addressLine, previousTown, result.town),
       }));
     } finally {
       setLooking(false);
