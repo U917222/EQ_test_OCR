@@ -220,6 +220,7 @@ def api_candidate_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "city": row.get("city") or "",
         "addressLine": row.get("address_line") or "",
         "status": api_normalize_candidate_status(row.get("status")),
+        "sourceUrl": row.get("source_url") or "",
         "uploadedAt": serialize_date_like(row.get("uploaded_at")),
         "decision": api_normalize_decision(row.get("hiring_decision")),
         "employeeNumber": row.get("employee_number") or "",

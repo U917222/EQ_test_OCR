@@ -14,6 +14,7 @@ const GAS_ACTIONS = new Set<Action>([
   "getCells",
   "getResult",
   "registerCandidate",
+  "attachScoresheet",
   "updateCandidate",
   "saveCells",
   "updateStatus",

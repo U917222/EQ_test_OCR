@@ -68,6 +68,7 @@ export type Candidate = {
   decisionAt?: string;
   memo?: string;
   updatedAt?: string;
+  sourceUrl?: string;
 };
 
 export type CellKey = `s${string}`;
@@ -116,6 +117,16 @@ export type RegisterCandidatePayload = {
   city?: string;
   addressLine?: string;
   memo?: string;
+  file?: {
+    name: string;
+    mimeType: string;
+    base64: string;
+  };
+  operationId: string;
+};
+
+export type AttachScoresheetPayload = {
+  candidateId: string;
   file: {
     name: string;
     mimeType: string;
