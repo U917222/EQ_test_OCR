@@ -29,6 +29,7 @@ const REQUIRED_ROLES: Record<Action, Role> = {
   getResult: "operator",
   getResultPdf: "reviewer",
   registerCandidate: "operator",
+  attachScoresheet: "operator",
   updateCandidate: "operator",
   saveCells: "operator",
   updateStatus: "operator",
