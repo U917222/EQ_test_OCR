@@ -1,0 +1,14 @@
+name = "cheq-eqtest"
+compatibility_date = "2026-06-23"
+pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "CHEQ_DB"
+database_name = "cheq-eqtest-db"
+database_id = "35c9160a-f3d2-46e7-9426-5999b5cadf20"
+
+# Cloud Run の scoring-api(/api) へ委譲するためのカットオーバー設定。
+# gasClient は SCORING_API_URL を GAS_API_URL より優先する。
+# 秘密値の FUNCTIONS_GAS_SECRET はここに置かず Pages secret として設定する。
+[vars]
+SCORING_API_URL = "https://scoring-api-q4drl4qqmq-an.a.run.app/api"

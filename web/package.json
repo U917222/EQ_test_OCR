@@ -1,0 +1,46 @@
+{
+  "name": "cheq-scoring-web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "pages:dev": "wrangler pages dev",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.1",
+    "@radix-ui/react-progress": "^1.1.0",
+    "@radix-ui/react-select": "^2.1.1",
+    "@radix-ui/react-slot": "^1.1.0",
+    "@radix-ui/react-tabs": "^1.1.0",
+    "@tanstack/react-query": "^5.51.23",
+    "class-variance-authority": "^0.7.0",
+    "clsx": "^2.1.1",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "recharts": "^2.12.7",
+    "sonner": "^1.5.0",
+    "tailwind-merge": "^2.5.2",
+    "tailwindcss-animate": "^1.0.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240925.0",
+    "@types/node": "^22.7.4",
+    "@types/react": "^18.3.10",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.13",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.9",
+    "wrangler": "^3.78.12"
+  }
+}

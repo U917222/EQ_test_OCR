@@ -1,0 +1,806 @@
+{
+  "description": "CHEQ採点表(page.5) 各小問の印字数字の並び（左→右のスロット順）。ブランク原本+実スキャンから自動分類。",
+  "source": "適性テスト用（応答態度1）スキャン + 4.HEIC ブランク原本で校正",
+  "cells": {
+    "s01": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 61,
+      "row": "A1"
+    },
+    "s02": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 41,
+      "row": "A1"
+    },
+    "s03": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 21,
+      "row": "A1"
+    },
+    "s04": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 1,
+      "row": "A1"
+    },
+    "s05": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 62,
+      "row": "B1"
+    },
+    "s06": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 42,
+      "row": "B1"
+    },
+    "s07": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 22,
+      "row": "B1"
+    },
+    "s08": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 2,
+      "row": "B1"
+    },
+    "s09": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 63,
+      "row": "C1"
+    },
+    "s10": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 43,
+      "row": "C1"
+    },
+    "s11": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 23,
+      "row": "C1"
+    },
+    "s12": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 3,
+      "row": "C1"
+    },
+    "s13": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 64,
+      "row": "D1"
+    },
+    "s14": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 44,
+      "row": "D1"
+    },
+    "s15": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 24,
+      "row": "D1"
+    },
+    "s16": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 4,
+      "row": "D1"
+    },
+    "s17": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 65,
+      "row": "E1"
+    },
+    "s18": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 45,
+      "row": "E1"
+    },
+    "s19": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 25,
+      "row": "E1"
+    },
+    "s20": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 5,
+      "row": "E1"
+    },
+    "s21": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 66,
+      "row": "F1"
+    },
+    "s22": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 46,
+      "row": "F1"
+    },
+    "s23": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 26,
+      "row": "F1"
+    },
+    "s24": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 6,
+      "row": "F1"
+    },
+    "s25": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 67,
+      "row": "G1"
+    },
+    "s26": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 47,
+      "row": "G1"
+    },
+    "s27": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 27,
+      "row": "G1"
+    },
+    "s28": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 7,
+      "row": "G1"
+    },
+    "s29": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 68,
+      "row": "H1"
+    },
+    "s30": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 48,
+      "row": "H1"
+    },
+    "s31": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 28,
+      "row": "H1"
+    },
+    "s32": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 8,
+      "row": "H1"
+    },
+    "s33": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 69,
+      "row": "I1"
+    },
+    "s34": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 49,
+      "row": "I1"
+    },
+    "s35": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 29,
+      "row": "I1"
+    },
+    "s36": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 9,
+      "row": "I1"
+    },
+    "s37": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 70,
+      "row": "J1"
+    },
+    "s38": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 50,
+      "row": "J1"
+    },
+    "s39": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 30,
+      "row": "J1"
+    },
+    "s40": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 10,
+      "row": "J1"
+    },
+    "s41": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 71,
+      "row": "A2"
+    },
+    "s42": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 51,
+      "row": "A2"
+    },
+    "s43": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 31,
+      "row": "A2"
+    },
+    "s44": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 11,
+      "row": "A2"
+    },
+    "s45": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 72,
+      "row": "B2"
+    },
+    "s46": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 52,
+      "row": "B2"
+    },
+    "s47": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 32,
+      "row": "B2"
+    },
+    "s48": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 12,
+      "row": "B2"
+    },
+    "s49": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 73,
+      "row": "C2"
+    },
+    "s50": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 53,
+      "row": "C2"
+    },
+    "s51": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 33,
+      "row": "C2"
+    },
+    "s52": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 13,
+      "row": "C2"
+    },
+    "s53": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 74,
+      "row": "D2"
+    },
+    "s54": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 54,
+      "row": "D2"
+    },
+    "s55": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 34,
+      "row": "D2"
+    },
+    "s56": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 14,
+      "row": "D2"
+    },
+    "s57": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 75,
+      "row": "E2"
+    },
+    "s58": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 55,
+      "row": "E2"
+    },
+    "s59": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 35,
+      "row": "E2"
+    },
+    "s60": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 15,
+      "row": "E2"
+    },
+    "s61": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 76,
+      "row": "F2"
+    },
+    "s62": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 56,
+      "row": "F2"
+    },
+    "s63": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 36,
+      "row": "F2"
+    },
+    "s64": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 16,
+      "row": "F2"
+    },
+    "s65": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 77,
+      "row": "G2"
+    },
+    "s66": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 57,
+      "row": "G2"
+    },
+    "s67": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 37,
+      "row": "G2"
+    },
+    "s68": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 17,
+      "row": "G2"
+    },
+    "s69": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 78,
+      "row": "H2"
+    },
+    "s70": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 58,
+      "row": "H2"
+    },
+    "s71": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 38,
+      "row": "H2"
+    },
+    "s72": {
+      "digits": [
+        3,
+        2,
+        1,
+        0
+      ],
+      "question": 18,
+      "row": "H2"
+    },
+    "s73": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 79,
+      "row": "I2"
+    },
+    "s74": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 59,
+      "row": "I2"
+    },
+    "s75": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 39,
+      "row": "I2"
+    },
+    "s76": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 19,
+      "row": "I2"
+    },
+    "s77": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 80,
+      "row": "J2"
+    },
+    "s78": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 60,
+      "row": "J2"
+    },
+    "s79": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 40,
+      "row": "J2"
+    },
+    "s80": {
+      "digits": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "question": 20,
+      "row": "J2"
+    }
+  }
+}
