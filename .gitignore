@@ -2,6 +2,7 @@
 
 # Local agent/tool state
 .claude/
+.wrangler/
 
 # Local environment and secrets
 .env
@@ -30,7 +31,7 @@ coverage/
 .next/
 
 # Apps Script / clasp
-gas/.clasp.json
+gas/.clasp*
 
 # Local image fixtures and private scans
 *.HEIC
@@ -45,3 +46,4 @@ gas/.clasp.json
 out/
 tmp/
 *.log
+plans/

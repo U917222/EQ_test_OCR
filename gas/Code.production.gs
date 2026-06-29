@@ -11,6 +11,9 @@ const SHEETS = {
   handwrittenTotals: 'HandwrittenTotals',
   results: 'Results',
   auditLog: 'AuditLog',
+  users: 'Users',
+  apiOperations: 'ApiOperations',
+  apiNonces: 'ApiNonces',
   config: 'Config',
 };
 
@@ -19,7 +22,12 @@ const HEADERS = {
     'candidate_id',
     'name',
     'test_date',
+    'gender',
     'role',
+    'postal_code',
+    'prefecture',
+    'city',
+    'address_line',
     'uploaded_at',
     'status',
     'source_url',
@@ -28,6 +36,7 @@ const HEADERS = {
     'employee_number',
     'decision_by',
     'decision_at',
+    'updated_at',
   ],
   RawCells: [
     'candidate_id',
@@ -101,6 +110,27 @@ const HEADERS = {
     'action',
     'candidate_id',
     'detail_json',
+    'operator',
+    'operation_id',
+    'result',
+    'at',
+  ],
+  Users: [
+    'email',
+    'role',
+    'active',
+  ],
+  ApiOperations: [
+    'operation_id',
+    'action',
+    'candidate_id',
+    'status',
+    'result_json',
+    'created_at',
+  ],
+  ApiNonces: [
+    'nonce',
+    'ts',
   ],
   Config: [
     'key',
@@ -140,9 +170,10 @@ const SCRIPT_PROPERTY_KEYS = {
   adminUsers: 'ADMIN_USER_EMAILS',
   recognitionEndpointHosts: 'RECOGNITION_ENDPOINT_HOSTS',
   appAccessCode: 'APP_ACCESS_CODE',
+  functionsGasSecret: 'FUNCTIONS_GAS_SECRET',
 };
 
-const DEFAULT_SPREADSHEET_ID = '';
+const DEFAULT_SPREADSHEET_ID = '102G-XV6OXrNzTmXa96IWwcJcXZJ6A_vSEOQVIZ-7Z7U';
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
 const ALLOWED_UPLOAD_MIME_TYPES = {
   'image/jpeg': true,
@@ -175,6 +206,11 @@ function doPost(event) {
   try {
     const bodyText = getPostBody_(event);
     const payload = parsePostPayload_(bodyText);
+
+    if (payload && payload.claims) {
+      return dispatchApiRequest_(event, bodyText, payload);
+    }
+
     assertWebhookAuthorized_(event, bodyText);
 
     if (payload.action === 'recognitionResult') {
@@ -208,6 +244,7 @@ function setupProductionWorkbook() {
       ensureHeader_(sheet, HEADERS[sheetName]);
     });
     seedProductionConfig_();
+    seedApiUsersPlaceholder_();
     logAudit_('SETUP_PRODUCTION_WORKBOOK', '', { spreadsheetUrl: ss.getUrl() });
     return { ok: true, spreadsheetUrl: ss.getUrl() };
   } finally {
@@ -243,11 +280,17 @@ function registerCandidate(payload, accessCode) {
       candidate_id: candidateId,
       name: payload.name,
       test_date: payload.testDate,
+      gender: normalizeCandidateGender_(payload.gender),
       role: payload.role || '',
+      postal_code: payload.postalCode || '',
+      prefecture: payload.prefecture || '',
+      city: payload.city || '',
+      address_line: payload.addressLine || '',
       uploaded_at: uploadedAt,
       status: sourceUrl ? 'UPLOADED' : 'REGISTERED',
       source_url: sourceUrl,
       memo: payload.memo || '',
+      updated_at: uploadedAt,
     });
 
     appendObject_(ss.getSheetByName(SHEETS.rawCells), {
@@ -272,6 +315,54 @@ function registerCandidate(payload, accessCode) {
   }
 
   return { ok: true, candidateId, sourceUrl };
+}
+
+function updateCandidateProfile(candidateId, payload, accessCode) {
+  assertAuthorizedUser_(accessCode);
+  return updateCandidateProfileInternal_(candidateId, payload);
+}
+
+function updateCandidateProfileInternal_(candidateId, payload) {
+  assertWorkbookReady_();
+  if (!candidateId) throw new Error('candidateId is required');
+  validateRequired_(payload, ['name', 'testDate']);
+  const testDate = String(payload.testDate || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(testDate)) throw new Error('testDate must be YYYY-MM-DD');
+
+  const lock = getWorkbookLock_();
+  lock.waitLock(30000);
+  try {
+    const ss = getWorkbook_();
+    const sheet = ss.getSheetByName(SHEETS.candidates);
+    const table = readTable_(sheet);
+    const rowIndex = table.rows.findIndex((row) => row.candidate_id === candidateId);
+    if (rowIndex < 0) throw new Error(`Candidate not found: ${candidateId}`);
+    const rowNumber = rowIndex + 2;
+    const updatedAt = new Date();
+    const patch = {
+      name: String(payload.name || '').trim(),
+      test_date: testDate,
+      gender: normalizeCandidateGender_(payload.gender),
+      postal_code: String(payload.postalCode || '').trim(),
+      prefecture: String(payload.prefecture || '').trim(),
+      city: String(payload.city || '').trim(),
+      address_line: String(payload.addressLine || '').trim(),
+      memo: String(payload.memo || '').trim(),
+      updated_at: updatedAt,
+    };
+    Object.keys(patch).forEach((header) => {
+      if (table.headers.includes(header)) setCellByHeader_(sheet, table.headers, rowNumber, header, patch[header]);
+    });
+    logAudit_('UPDATE_CANDIDATE_PROFILE', candidateId, patch);
+  } finally {
+    lock.releaseLock();
+  }
+  return findById_(getWorkbook_().getSheetByName(SHEETS.candidates), 'candidate_id', candidateId);
+}
+
+function normalizeCandidateGender_(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return ['male', 'female', 'other'].includes(normalized) ? normalized : '';
 }
 
 function startRecognition(candidateId, accessCode) {
@@ -426,9 +517,14 @@ function registerHiringDecision(candidateId, decision, employeeNumber, accessCod
     setCellByHeader_(sheet, table.headers, rowNumber, 'employee_number', storedEmployeeNumber);
     setCellByHeader_(sheet, table.headers, rowNumber, 'decision_by', actor);
     setCellByHeader_(sheet, table.headers, rowNumber, 'decision_at', decidedAt);
+    if (table.headers.includes('updated_at')) setCellByHeader_(sheet, table.headers, rowNumber, 'updated_at', decidedAt);
+    if (normalizedDecision) {
+      setCellByHeader_(sheet, table.headers, rowNumber, 'status', 'FINALIZED');
+    }
 
     const detail = { decision: normalizedDecision };
     if (storedEmployeeNumber) detail.employeeNumber = storedEmployeeNumber;
+    if (normalizedDecision) detail.status = 'FINALIZED';
     logAudit_('REGISTER_HIRING_DECISION', candidateId, detail);
 
     return {
@@ -629,7 +725,6 @@ function calculateCandidateResultInternal_(candidateId) {
     // マスタはシートが正。採点ロジックは CheqScoring.gs (純粋関数) に委譲する
     const itemMaster = buildItemMasterFromRows(readObjects_(ss.getSheetByName(SHEETS.itemMaster)));
     const bands = buildBandsFromRows(readObjects_(ss.getSheetByName(SHEETS.scoreBands)));
-    const rankRules = readObjects_(ss.getSheetByName(SHEETS.rankRules));
     const handwrittenTotals = readHandwrittenTotals_(ss, candidateId);
 
     const scored = scoreSheet(extractCells_(rawCells), {
@@ -641,14 +736,14 @@ function calculateCandidateResultInternal_(candidateId) {
       throw new Error(`Undecided cells remain: ${scored.issues.map((i) => i.cell).join(', ')}`);
     }
 
-    // RankRules は項目ラベル(①〜⑨/応答態度)で条件を書くため、ラベルキーに変換する
+    // 総合判定は項目ラベル①〜④だけを見る。
     const stagesByLabel = {};
     const totalsByLabel = {};
     itemMaster.forEach((item) => {
       stagesByLabel[item.label] = scored.stages[item.key];
       totalsByLabel[item.label] = scored.itemTotals[item.key];
     });
-    const rankResult = calculateRank_(stagesByLabel, rankRules);
+    const rankResult = calculateFallbackRank_(stagesByLabel);
     const attitudeMinus = Number(rankResult.minusPoints || 0);
     const jobReqMinus = Number(scored.jobRequirementMinusPoints || 0);
     // minus_points は職務必要要件(⑤〜⑨)の低段階項目のみ。応答態度減点は別列で保持する。
@@ -758,7 +853,7 @@ function downloadCandidateResultPdf(candidateId, accessCode) {
   const fileName = `CHEQ_${sanitizePdfFileName_(data.candidate.name || data.candidate.candidate_id || 'result')}.pdf`;
   const html = buildCandidateResultPdfHtml_(data);
   const pdfBlob = Utilities
-    .newBlob(html, 'text/html', fileName.replace(/\.pdf$/, '.html'))
+    .newBlob(html, 'text/html; charset=UTF-8', fileName.replace(/\.pdf$/, '.html'))
     .getAs('application/pdf')
     .setName(fileName);
 
@@ -845,7 +940,7 @@ function buildCandidateResultPdfHtml_(data) {
       body {
         margin: 0;
         color: #1a1a1a;
-        font-family: "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+        font-family: "Noto Sans JP", "Noto Sans CJK JP", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
         font-size: 10px;
       }
       h1, h2, h3, p { margin: 0; }
@@ -921,7 +1016,6 @@ function buildCandidateResultPdfHtml_(data) {
           <tr>
             <td>候補者ID: ${escapeHtmlForPdf_(candidate.candidate_id || '-')}</td>
             <td>検査日: ${escapeHtmlForPdf_(candidate.test_date || '-')}</td>
-            <td>応募職種: ${escapeHtmlForPdf_(candidate.role || '-')}</td>
           </tr>
         </table>
       </td>
@@ -1486,6 +1580,7 @@ function updateCandidateStatus_(ss, candidateId, status) {
   const rowIndex = table.rows.findIndex((row) => row.candidate_id === candidateId);
   if (rowIndex >= 0) {
     setCellByHeader_(sheet, table.headers, rowIndex + 2, 'status', status);
+    if (table.headers.includes('updated_at')) setCellByHeader_(sheet, table.headers, rowIndex + 2, 'updated_at', new Date());
   }
 }
 
@@ -1503,66 +1598,12 @@ function extractCells_(rawCellsRow) {
   return cells;
 }
 
-function calculateRank_(categoryStages, rankRules) {
-  const sortedRules = (rankRules || [])
-    .filter((row) => row.condition_json && row.rank)
-    .sort((a, b) => String(a.rule_id).localeCompare(String(b.rule_id)));
-
-  for (let i = 0; i < sortedRules.length; i += 1) {
-    const rule = sortedRules[i];
-    const condition = safeJsonParse_(rule.condition_json, null);
-    if (condition && evaluateRankCondition_(condition, categoryStages)) {
-      return {
-        rank: rule.rank,
-        minusPoints: rule.minus_points !== '' && rule.minus_points !== undefined
-          ? rule.minus_points
-          : calculateResponseAttitudeMinusPoints_(categoryStages),
-        note: rule.note || rule.label || '',
-      };
-    }
-  }
-
-  return calculateFallbackRank_(categoryStages);
-}
-
-function evaluateRankCondition_(condition, categoryStages) {
-  if (condition.all) {
-    return condition.all.every((item) => evaluateRankCondition_(item, categoryStages));
-  }
-  if (condition.any) {
-    return condition.any.some((item) => evaluateRankCondition_(item, categoryStages));
-  }
-  if (condition.category) {
-    const stage = Number(categoryStages[condition.category] || 0);
-    if (condition.eq !== undefined) return stage === Number(condition.eq);
-    if (condition.lte !== undefined) return stage <= Number(condition.lte);
-    if (condition.gte !== undefined) return stage >= Number(condition.gte);
-    if (condition.lt !== undefined) return stage < Number(condition.lt);
-    if (condition.gt !== undefined) return stage > Number(condition.gt);
-  }
-  if (condition.min_stage_lte !== undefined) {
-    const stages = rankStageValues_(categoryStages);
-    return stages.length > 0 && Math.min(...stages) <= Number(condition.min_stage_lte);
-  }
-  if (condition.low_stage_count_gte !== undefined) {
-    const threshold = Number(condition.threshold || 2);
-    const count = rankStageValues_(categoryStages).filter((value) => value <= threshold).length;
-    return count >= Number(condition.low_stage_count_gte);
-  }
-  if (condition.average_stage_lt !== undefined) {
-    const stages = rankStageValues_(categoryStages);
-    if (stages.length === 0) return false;
-    const average = stages.reduce((sum, value) => sum + value, 0) / stages.length;
-    return average < Number(condition.average_stage_lt);
-  }
-  return false;
-}
-
-// 総合ランクの集計対象段階。応答態度は「段階が高いほど悪い」逆スケールのため除外する
-// （応答態度を条件にしたい場合は {"category":"応答態度","gte":4} のように明示指定する）
+// 総合ランクの集計対象段階は①〜④のみ。
+// ⑤〜⑨は職務必要要件マイナスとして扱い、総合ランクの段階2以下カウントには含めない。
+// 応答態度は「段階が高いほど悪い」逆スケールのため除外する。
 function rankStageValues_(categoryStages) {
   return Object.keys(categoryStages)
-    .filter((label) => label !== '応答態度')
+    .filter((label) => /^[①②③④]/.test(label))
     .map((label) => Number(categoryStages[label]))
     .filter((value) => value > 0);
 }
@@ -1573,21 +1614,19 @@ function calculateFallbackRank_(categoryStages) {
     return { rank: '', minusPoints: '', note: '段階得点がありません' };
   }
 
-  const minStage = Math.min(...stages);
-  const average = stages.reduce((sum, value) => sum + value, 0) / stages.length;
   const lowStageCount = stages.filter((value) => value <= 2).length;
   const minusPoints = calculateResponseAttitudeMinusPoints_(categoryStages);
 
-  if (minStage <= 1 || lowStageCount >= 3) {
-    return { rank: 'D', minusPoints, note: '低段階項目が複数あります' };
+  if (lowStageCount <= 0) {
+    return { rank: 'A', minusPoints, note: '段階2以下の項目はありません' };
   }
-  if (lowStageCount >= 1 || minusPoints < 0 || average < 3) {
-    return { rank: 'C', minusPoints, note: '面接で注意項目を確認してください' };
+  if (lowStageCount === 1) {
+    return { rank: 'B', minusPoints, note: '段階2以下の項目が1件あります' };
   }
-  if (average >= 4) {
-    return { rank: 'A', minusPoints, note: '全体的に安定しています' };
+  if (lowStageCount === 2) {
+    return { rank: 'C', minusPoints, note: '段階2以下の項目が2件あります' };
   }
-  return { rank: 'B', minusPoints, note: '概ね標準範囲です' };
+  return { rank: 'D', minusPoints, note: '段階2以下の項目が3件以上あります' };
 }
 
 function calculateResponseAttitudeMinusPoints_(categoryStages) {
@@ -1615,8 +1654,13 @@ function upsertResult_(ss, result) {
 function assertWorkbookReady_() {
   const ss = getWorkbook_();
   Object.keys(HEADERS).forEach((sheetName) => {
-    const sheet = ss.getSheetByName(sheetName);
+    let sheet = ss.getSheetByName(sheetName);
     if (!sheet) {
+      if (['Users', 'ApiOperations', 'ApiNonces'].includes(sheetName)) {
+        sheet = getOrCreateSheet_(ss, sheetName);
+        ensureHeader_(sheet, HEADERS[sheetName]);
+        return;
+      }
       throw new Error(`Sheet is missing: ${sheetName}. Run setupProductionWorkbook first.`);
     }
     const headers = sheet.getRange(1, 1, 1, Math.max(sheet.getLastColumn(), HEADERS[sheetName].length)).getValues()[0];
@@ -1906,6 +1950,24 @@ function seedProductionConfig_() {
       appendObject_(sheet, config);
     }
   });
+}
+
+function seedApiUsersPlaceholder_() {
+  const ss = getWorkbook_();
+  const sheet = ss.getSheetByName(SHEETS.users);
+  if (!sheet || readObjects_(sheet).length > 0) return;
+
+  appendObject_(sheet, {
+    email: '',
+    role: 'admin',
+    active: 'FALSE',
+  });
+
+  try {
+    sheet.getRange(2, 1).setNote('Cloudflare Functions API 管理者のメールアドレスを入力し、active を TRUE にしてください。');
+  } catch (error) {
+    // Notes are best-effort metadata; setup should still succeed without them.
+  }
 }
 
 function getPostBody_(event) {

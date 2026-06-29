@@ -1,0 +1,2 @@
+ALTER TABLE candidates
+ADD COLUMN gender TEXT NOT NULL DEFAULT '';
