@@ -518,14 +518,16 @@ async function getResultPdf(env: Env, candidateId: string) {
     body: JSON.stringify(renderPayload),
   });
   const body = await upstream.json().catch(() => null);
-  if (!upstream.ok || !isRecord(body)) {
+  // 200 でも本文が契約(ok:true かつ base64 非空)を満たさない場合は失敗として扱う（空PDFを返さない）。
+  const base64 = isRecord(body) && typeof body.base64 === "string" ? body.base64 : "";
+  if (!upstream.ok || !isRecord(body) || body.ok !== true || base64 === "") {
     const message = gasErrorMessage(body) || `PDF出力に失敗しました: HTTP ${upstream.status}`;
     throw new HttpError(502, "upstream", message);
   }
   return {
     filename: String(body.filename ?? `CHEQ_${candidate.name ?? candidateId}.pdf`),
     mimeType: String(body.mimeType ?? "application/pdf"),
-    base64: String(body.base64 ?? ""),
+    base64,
   };
 }
 
@@ -772,6 +774,10 @@ async function attachScoresheet(env: Env, context: Context) {
   if (!candidate) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
   if (String(candidate.status ?? "").toUpperCase() === "FINALIZED") {
     throw new HttpError(400, "validation", "確定済みの候補者は採点表を再取込できません");
+  }
+  // OCR 未設定なら、ファイル保存や source_url 更新をする前に fail-fast（部分更新を残さない）。
+  if (!env.OCR_API_URL || !env.OCR_API_KEY) {
+    throw new HttpError(400, "validation", "OCRが設定されていません (OCR_API_URL/OCR_API_KEY)");
   }
 
   const now = nowIso();
