@@ -167,8 +167,8 @@ wrangler pages secret put KEY
 各デプロイ後、本番環境で動作確認:
 
 1. **Web**: https://cheq-eqtest.pages.dev（ダッシュボード・候補者一覧が高速＆D1表示）
-2. **scoring-api**: `curl https://scoring-api-*.run.app/health` → 200 OK
-3. **ocr-api**: `curl https://ocr-api-*.run.app/health` → 200 OK
+2. **scoring-api**: `curl https://scoring-api-*.run.app/readyz` → 200 OK
+3. **ocr-api**: `curl https://ocr-api-*.run.app/readyz` または `/healthz` → 200 OK
 
 ---
 

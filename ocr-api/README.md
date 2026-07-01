@@ -48,13 +48,15 @@ GAS Webhook (doPost)
 
 解析に失敗した場合は全設問を「空欄・信頼度0」で返し、ReviewQueueで人間が確認できるようにします（握りつぶさない方針）。
 
+D1 / Cloudflare Pages Functions 経路では、Drive/callback を使わない同期API `POST /recognize-sync` も使います。`file.base64` と MIME type を受け取り、その場で `recognition` を返します。
+
 ---
 
 ## 構成ファイル
 
 | ファイル | 役割 |
 | --- | --- |
-| `main.py` | FastAPIのHTTP入口（`POST /recognize`、`GET /healthz`）。Bearer検証とバックグラウンド処理 |
+| `main.py` | FastAPIのHTTP入口（`POST /recognize`、`POST /recognize-sync`、`GET /healthz`、`GET /readyz`）。Bearer検証とバックグラウンド処理 |
 | `src/scoresheet_recognizer.py` | 採点表 `s01`〜`s80` の○検出・信頼度計算 |
 | `src/scoresheet_grid.py` | 採点表の罫線格子検出 |
 | `src/scoresheet_layout.py` | セルキー `s01`〜`s80` と数字配列マスタの読み込み |
@@ -146,6 +148,15 @@ curl -s http://127.0.0.1:8080/healthz       # => {"ok":true}
 ```
 
 `POST /recognize` 自体はDrive取得とGASコールバックが必要なため、完全な動作確認は[エンドツーエンド](#エンドツーエンド動作確認)で行います。
+
+D1 経路と同じ同期APIを試す場合:
+
+```bash
+curl -s http://127.0.0.1:8080/recognize-sync \
+  -H "Authorization: Bearer $RECOGNITION_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"file":{"base64":"<BASE64>","mimeType":"application/pdf","name":"scan.pdf"}}'
+```
 
 ---
 
