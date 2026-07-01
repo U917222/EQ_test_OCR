@@ -15,6 +15,10 @@ database_id = "35c9160a-f3d2-46e7-9426-5999b5cadf20"
 # 全セル手入力になる。OCR_API_KEY は専用 Bearer トークンで Pages secret として設定する
 # (FUNCTIONS_GAS_SECRET とは別物。使い回さないこと)。
 # OCR_API_URL = "https://ocr-api-xxxxxxxx-an.a.run.app/recognize-sync"  (OCR_API_KEY is a Pages secret)
+[migrations]
+database = "CHEQ_DB"
+migrations_dir = "./migrations"
+
 [vars]
 SCORING_API_URL = "https://scoring-api-q4drl4qqmq-an.a.run.app/api"
 # 結果PDFは D1 経路から Cloud Run の専用 /render-pdf(Bearer 認証)へ委譲する。
