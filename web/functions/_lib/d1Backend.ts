@@ -536,7 +536,7 @@ const GAS_DRIVE_FILE_MAX_BYTES = 9 * 1024 * 1024;
 const D1_CHUNKED_FILE_MAX_BYTES = 9 * 1024 * 1024;
 const FILE_CHUNK_BASE64_LENGTH = 256 * 1024;
 
-async function registerCandidate(env: Env, context: Context) {
+export async function registerCandidate(env: Env, context: Context) {
   const db = env.CHEQ_DB;
   const payload = context.payload;
   if (!payload.name) throw new HttpError(400, "validation", "name is required");
@@ -562,7 +562,9 @@ async function registerCandidate(env: Env, context: Context) {
       normalizeOptionalText(payload.city),
       normalizeOptionalText(payload.addressLine),
       createdAt,
-      "REVIEW_REQUIRED",
+      // scoring-api/src/repository.py の create_candidate() と同じ規則(ファイル無し→UPLOADED=応募済み)。
+      // OCR認識できた場合は下の applyRecognition が REVIEW_REQUIRED/READY_TO_FINALIZE に上書きする。
+      preparedFile ? "PROCESSING" : "UPLOADED",
       "",
       normalizeOptionalText(payload.memo),
       createdAt,
@@ -1110,13 +1112,15 @@ type PreparedFile = {
 };
 
 async function prepareCandidateFile(file: Record<string, unknown>, maxBytes: number): Promise<PreparedFile | null> {
-  const filename = safeFilename(String(file.name ?? "").trim());
+  const rawName = String(file.name ?? "").trim();
   const contentType = String(file.mimeType ?? file.contentType ?? "").trim();
   const base64 = String(file.base64 ?? "").trim();
 
-  if (!filename && !base64) return null;
-  if (!filename) throw new HttpError(400, "validation", "file.name is required");
+  // safeFilename() は空文字を "scoresheet" にフォールバックするため、
+  // 「ファイル自体が無い」判定は safeFilename 適用前の生の name/base64 で行う。
+  if (!rawName && !base64) return null;
   if (!base64) throw new HttpError(400, "validation", "file.base64 is required");
+  const filename = safeFilename(rawName);
   if (!isAllowedUploadType(contentType)) {
     throw new HttpError(400, "validation", "file must be an image or PDF");
   }
