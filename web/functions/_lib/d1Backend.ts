@@ -10,6 +10,8 @@ interface Env {
   CHEQ_FILES?: R2Bucket;
   GAS_API_URL?: string;
   FUNCTIONS_GAS_SECRET?: string;
+  PDF_RENDER_URL?: string;
+  PDF_RENDER_KEY?: string;
 }
 
 interface Context {
@@ -124,7 +126,7 @@ async function handleAction(
     case "saveDecision":
       return saveDecision(db, requireCandidateId(context.payload), context.payload, context.operator);
     case "getResultPdf":
-      throw new HttpError(400, "validation", "D1 backend does not generate result PDFs yet");
+      return getResultPdf(env, requireCandidateId(context.payload));
     case "exportBackup":
       return { backup: await exportD1ToSpreadsheetBackup(db, { bindingName: "CHEQ_DB" }) };
     case "listEvaluationMeta":
@@ -465,6 +467,61 @@ async function getResult(db: D1Database, candidateId: string) {
       updatedAt: raw.updated_at,
     } : null,
     sourceUrl: candidate.source_url ?? "",
+  };
+}
+
+async function getResultPdf(env: Env, candidateId: string) {
+  const db = env.CHEQ_DB;
+  const candidate = await getCandidate(db, candidateId);
+  if (!candidate) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
+  const result = await db.prepare("SELECT * FROM results WHERE candidate_id = ?").bind(candidateId).first<Record<string, unknown>>();
+  if (!result) throw new HttpError(400, "validation", "採点結果がまだ確定していません");
+  const raw = await db.prepare("SELECT * FROM raw_cells WHERE candidate_id = ?").bind(candidateId).first<Record<string, unknown>>();
+
+  if (!env.PDF_RENDER_URL || !env.PDF_RENDER_KEY) {
+    throw new HttpError(400, "validation", "PDF出力が未設定です");
+  }
+
+  // build_result_pdf 入力（snake_case, native types）に一致させる。
+  const renderPayload = {
+    candidate: {
+      name: candidate.name ?? "",
+      candidate_id: candidate.candidate_id ?? candidateId,
+      test_date: candidate.test_date ?? "",
+    },
+    result: {
+      total_rank: result.total_rank ?? "",
+      response_attitude_stage: result.response_attitude_stage ?? "",
+      attitude_minus_points: result.attitude_minus_points ?? "",
+      minus_points: result.minus_points ?? "",
+      job_requirement_minus_points: result.job_requirement_minus_points ?? "",
+      item_totals: jsonParse(String(result.item_totals_json ?? "{}"), {}),
+      item_stages: jsonParse(String(result.item_stages_json ?? "{}"), {}),
+      cross_check: jsonParse(String(result.cross_check_json ?? "[]"), []),
+      job_requirement_low_items: jsonParse(String(result.job_requirement_low_items_json ?? "[]"), []),
+    },
+    rawCellSummary: {
+      unresolved_count: numberOrNull(raw?.unresolved_count) ?? 0,
+    },
+  };
+
+  const upstream = await fetch(env.PDF_RENDER_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${env.PDF_RENDER_KEY}`,
+    },
+    body: JSON.stringify(renderPayload),
+  });
+  const body = await upstream.json().catch(() => null);
+  if (!upstream.ok || !isRecord(body)) {
+    const message = gasErrorMessage(body) || `PDF出力に失敗しました: HTTP ${upstream.status}`;
+    throw new HttpError(502, "upstream", message);
+  }
+  return {
+    filename: String(body.filename ?? `CHEQ_${candidate.name ?? candidateId}.pdf`),
+    mimeType: String(body.mimeType ?? "application/pdf"),
+    base64: String(body.base64 ?? ""),
   };
 }
 

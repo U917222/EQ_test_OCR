@@ -12,3 +12,5 @@ database_id = "35c9160a-f3d2-46e7-9426-5999b5cadf20"
 # 秘密値の FUNCTIONS_GAS_SECRET はここに置かず Pages secret として設定する。
 [vars]
 SCORING_API_URL = "https://scoring-api-q4drl4qqmq-an.a.run.app/api"
+# 結果PDFは D1 経路から Cloud Run の専用 /render-pdf(Bearer 認証)へ委譲する。
+# PDF_RENDER_URL = "https://scoring-api-q4drl4qqmq-an.a.run.app/render-pdf"  (PDF_RENDER_KEY is a Pages secret)
