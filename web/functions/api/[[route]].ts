@@ -16,6 +16,8 @@ interface Env {
   FUNCTIONS_GAS_SECRET?: string;
   PDF_RENDER_URL?: string;
   PDF_RENDER_KEY?: string;
+  OCR_API_URL?: string;
+  OCR_API_KEY?: string;
 }
 
 type JsonBody = Record<string, unknown>;

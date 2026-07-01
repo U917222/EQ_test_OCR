@@ -12,6 +12,8 @@ interface Env {
   FUNCTIONS_GAS_SECRET?: string;
   PDF_RENDER_URL?: string;
   PDF_RENDER_KEY?: string;
+  OCR_API_URL?: string;
+  OCR_API_KEY?: string;
 }
 
 interface Context {
@@ -113,6 +115,8 @@ async function handleAction(
       return getResult(db, requireCandidateId(context.payload));
     case "registerCandidate":
       return registerCandidate(env, context);
+    case "attachScoresheet":
+      return attachScoresheet(env, context);
     case "updateCandidate":
       return updateCandidate(db, requireCandidateId(context.payload), context.payload);
     case "saveCells":
@@ -574,7 +578,16 @@ async function registerCandidate(env: Env, context: Context) {
       .prepare("INSERT INTO raw_cells (candidate_id, cells_json, confidence_avg, unresolved_count, page_index, image_links_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
       .bind(candidateId, JSON.stringify(defaultCells()), "", 80, "", storedFile ? JSON.stringify(imageLinksForFile(sourceUrl, storedFile.contentType)) : "{}", createdAt)
       .run();
-    await insertOpenReviews(db, candidateId);
+    // 画像があり OCR が設定されていれば同期解析して cells/ReviewQueue を埋める。
+    // OCR 未設定(null)やファイル無しは従来どおり全セル手入力の初期状態にする。
+    const recognition = preparedFile
+      ? await recognizeWithOcr(env, preparedFile.bytes, preparedFile.contentType, preparedFile.filename)
+      : null;
+    if (recognition) {
+      await applyRecognition(db, candidateId, recognition, createdAt);
+    } else {
+      await insertOpenReviews(db, candidateId);
+    }
     const candidate = await getCandidate(db, candidateId);
     return { candidate: apiCandidate(candidate ?? {}) };
   } catch (error) {
@@ -584,6 +597,249 @@ async function registerCandidate(env: Env, context: Context) {
     await db.prepare("DELETE FROM candidates WHERE candidate_id = ?").bind(candidateId).run().catch(() => undefined);
     throw error;
   }
+}
+
+// OCR で読み取れる 0〜3 のセル。scoring-api の cell 契約と同じ shape。
+const RECOGNITION_MIN_CONFIDENCE = 0.8;
+
+type RecognitionCell = { value: number | null; confidence?: number | null; reason?: string };
+type Recognition = {
+  cells?: Record<string, RecognitionCell>;
+  confidenceAvg?: number | null;
+  unresolvedCount?: number | null;
+  sheet?: string;
+  pageIndex?: number | null;
+  imageLinks?: Record<string, string>;
+  status?: string;
+  error?: { code?: string; message?: string };
+};
+
+// 採点表画像を ocr-api の /recognize-sync で同期解析する。OCR 未設定なら null(=OCRスキップ)。
+// HTTP 非200 や例外時は全セル未確定の failure recognition に縮退させ、候補者は全件手入力へ回す
+// (エラーで登録自体を落とさない)。
+async function recognizeWithOcr(
+  env: Env,
+  bytes: Uint8Array,
+  mimeType: string,
+  name: string,
+  pageIndex?: number | null,
+): Promise<Recognition | null> {
+  if (!env.OCR_API_URL || !env.OCR_API_KEY) return null;
+  const requestBody = {
+    file: { base64: bytesToBase64(bytes), mimeType, name },
+    pageIndex: pageIndex ?? null,
+  };
+  try {
+    const response = await fetch(env.OCR_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${env.OCR_API_KEY}`,
+      },
+      body: JSON.stringify(requestBody),
+    });
+    if (!response.ok) {
+      console.error(`[ocr] recognize-sync failed: HTTP ${response.status}`);
+      return failureRecognition(pageIndex);
+    }
+    const body = await response.json();
+    const recognition = asRecord(body).recognition;
+    if (!isRecord(recognition)) {
+      console.error("[ocr] recognize-sync response missing recognition");
+      return failureRecognition(pageIndex);
+    }
+    return recognition as Recognition;
+  } catch (error) {
+    console.error("[ocr] recognize-sync request error:", error);
+    return failureRecognition(pageIndex);
+  }
+}
+
+// 全セル未確定・信頼度0の recognition。OCR に到達できない時のフォールバック。
+function failureRecognition(pageIndex?: number | null): Recognition {
+  const cells: Record<string, RecognitionCell> = {};
+  for (const key of CELL_KEYS) {
+    cells[key] = { value: null, confidence: 0, reason: "recognition_failed" };
+  }
+  return {
+    cells,
+    confidenceAvg: 0,
+    unresolvedCount: CELL_KEYS.length,
+    sheet: "cheq-scoresheet-p5",
+    pageIndex: pageIndex ?? null,
+    imageLinks: {},
+    status: "failed",
+    error: { code: "recognition_failed", message: "OCR recognition unavailable" },
+  };
+}
+
+// recognition を raw_cells / review_queue / candidates.status へ反映する。
+// scoring-api の Repository.import_recognition_result / _normalize_recognition_cells /
+// _build_review_items と同じ規則。
+async function applyRecognition(
+  db: D1Database,
+  candidateId: string,
+  recognition: Recognition,
+  now: string,
+): Promise<{ unresolvedCount: number; status: string }> {
+  const rawCells = asRecord(recognition.cells);
+  const cells: Record<string, { value: number | null; confidence: number; reason: string }> = {};
+  for (const key of CELL_KEYS) {
+    const cell = asRecord(rawCells[key]);
+    let value = numberOrNull(cell.value);
+    if (value !== 0 && value !== 1 && value !== 2 && value !== 3) value = null;
+    const confidence = numberOrNull(cell.confidence) ?? 0;
+    const reason = value === null ? (String(cell.reason ?? "") || "low_confidence") : "";
+    cells[key] = { value, confidence, reason };
+  }
+
+  const imageLinks = asRecord(recognition.imageLinks);
+  const reviewRows: Array<{ key: string; detected: number | ""; reason: string; confidence: number; imageLink: string }> = [];
+  for (const key of CELL_KEYS) {
+    const cell = cells[key];
+    let reason = "";
+    if (cell.value === null) {
+      reason = cell.reason || "low_confidence";
+    } else if (cell.confidence > 0 && cell.confidence < RECOGNITION_MIN_CONFIDENCE) {
+      reason = "low_confidence";
+    }
+    if (!reason) continue;
+    reviewRows.push({
+      key,
+      detected: cell.value === null ? "" : cell.value,
+      reason,
+      confidence: cell.confidence,
+      imageLink: String(imageLinks[key] ?? ""),
+    });
+  }
+
+  const unresolvedCount = reviewRows.length;
+  const confidenceAvg = numberOrNull(recognition.confidenceAvg);
+  const pageIndex = numberOrNull(recognition.pageIndex);
+
+  const existing = await db
+    .prepare("SELECT image_links_json FROM raw_cells WHERE candidate_id = ?")
+    .bind(candidateId)
+    .first<{ image_links_json: string }>();
+  const existingLinks = asRecord(jsonParse(String(existing?.image_links_json ?? "{}"), {}));
+  const mergedImageLinks = { ...existingLinks, ...imageLinks };
+
+  // 既存の未解決レビューは作り直す。人間が解決済みの行(RESOLVED)は残す。
+  await db.prepare("DELETE FROM review_queue WHERE candidate_id = ? AND status != 'RESOLVED'").bind(candidateId).run();
+  if (reviewRows.length) {
+    await db.batch(
+      reviewRows.map((item) =>
+        db
+          .prepare("INSERT INTO review_queue (review_id, candidate_id, cell_key, detected, reason, confidence, image_link, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+          .bind(crypto.randomUUID(), candidateId, item.key, item.detected, item.reason, item.confidence, item.imageLink, "OPEN"),
+      ),
+    );
+  }
+
+  await db
+    .prepare(
+      `INSERT INTO raw_cells (candidate_id, cells_json, confidence_avg, unresolved_count, page_index, image_links_json, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(candidate_id) DO UPDATE SET
+         cells_json = excluded.cells_json,
+         confidence_avg = excluded.confidence_avg,
+         unresolved_count = excluded.unresolved_count,
+         page_index = excluded.page_index,
+         image_links_json = excluded.image_links_json,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      candidateId,
+      JSON.stringify(cells),
+      confidenceAvg === null ? "" : confidenceAvg,
+      unresolvedCount,
+      pageIndex === null ? "" : pageIndex,
+      JSON.stringify(mergedImageLinks),
+      now,
+    )
+    .run();
+
+  const status = unresolvedCount > 0 ? "REVIEW_REQUIRED" : "READY_TO_FINALIZE";
+  await updateCandidateStatusValue(db, candidateId, status);
+  return { unresolvedCount, status };
+}
+
+// 採点表画像を後から取り込む(または既存画像を再OCRする)。registerCandidate と対で使う。
+async function attachScoresheet(env: Env, context: Context) {
+  const db = env.CHEQ_DB;
+  const candidateId = requireCandidateId(context.payload);
+  const candidate = await getCandidate(db, candidateId);
+  if (!candidate) throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
+  if (String(candidate.status ?? "").toUpperCase() === "FINALIZED") {
+    throw new HttpError(400, "validation", "確定済みの候補者は採点表を再取込できません");
+  }
+
+  const now = nowIso();
+  const preparedFile = await prepareCandidateFile(asRecord(context.payload.file), uploadMaxBytes(env));
+
+  let bytes: Uint8Array;
+  let mimeType: string;
+  let name: string;
+  if (preparedFile) {
+    const storedFile = await storeCandidateFile(env, candidateId, preparedFile, context.operator, now, context.operationId);
+    bytes = preparedFile.bytes;
+    mimeType = preparedFile.contentType;
+    name = preparedFile.filename;
+    const sourceUrl = storedFile ? storedFile.publicUrl || fileUrl(storedFile.fileId, storedFile.filename) : "";
+    if (sourceUrl) {
+      await db.prepare("UPDATE candidates SET source_url = ?, updated_at = ? WHERE candidate_id = ?").bind(sourceUrl, now, candidateId).run();
+      await db
+        .prepare("UPDATE raw_cells SET image_links_json = ?, updated_at = ? WHERE candidate_id = ?")
+        .bind(JSON.stringify(imageLinksForFile(sourceUrl, storedFile!.contentType)), now, candidateId)
+        .run();
+    }
+  } else {
+    const stored = await readStoredFileBytes(env, candidateId);
+    bytes = stored.bytes;
+    mimeType = stored.contentType;
+    name = stored.filename;
+  }
+
+  const recognition = await recognizeWithOcr(env, bytes, mimeType, name);
+  if (!recognition) {
+    throw new HttpError(400, "validation", "OCRが設定されていません (OCR_API_URL/OCR_API_KEY)");
+  }
+  const applied = await applyRecognition(db, candidateId, recognition, now);
+  const updated = await getCandidate(db, candidateId);
+  return { candidate: apiCandidate(updated ?? {}), unresolvedCount: applied.unresolvedCount };
+}
+
+// 保存済み候補者ファイルの実バイトを storage_kind ごとに読み戻す。files/[[path]].ts と同じ規則。
+async function readStoredFileBytes(
+  env: Env,
+  candidateId: string,
+): Promise<{ bytes: Uint8Array; contentType: string; filename: string }> {
+  const db = env.CHEQ_DB;
+  const file = await db
+    .prepare("SELECT file_id, r2_key, filename, content_type, storage_kind, body_base64 FROM candidate_files WHERE candidate_id = ? ORDER BY uploaded_at DESC LIMIT 1")
+    .bind(candidateId)
+    .first<{ file_id: string; r2_key: string; filename: string; content_type: string; storage_kind?: string; body_base64?: string }>();
+  if (!file) throw new HttpError(404, "not_found", "再OCRできる画像が見つかりません");
+  const storageKind = file.storage_kind ?? "r2";
+  const contentType = String(file.content_type ?? "");
+  const filename = String(file.filename ?? "scoresheet");
+  if (storageKind === "google_drive") {
+    throw new HttpError(400, "validation", "Drive保存の画像は再OCRできません");
+  }
+  if (storageKind === "d1") {
+    return { bytes: base64ToBytes(String(file.body_base64 ?? "")), contentType, filename };
+  }
+  if (storageKind === "d1_chunks") {
+    const chunks = await db
+      .prepare("SELECT body_base64 FROM candidate_file_chunks WHERE file_id = ? ORDER BY chunk_index")
+      .bind(file.file_id)
+      .all<{ body_base64: string }>();
+    return { bytes: base64ToBytes(chunks.results.map((chunk) => chunk.body_base64).join("")), contentType, filename };
+  }
+  if (!env.CHEQ_FILES) throw new HttpError(500, "internal", "Missing CHEQ_FILES binding");
+  const object = await env.CHEQ_FILES.get(file.r2_key);
+  if (!object) throw new HttpError(404, "not_found", "画像オブジェクトが見つかりません");
+  return { bytes: new Uint8Array(await object.arrayBuffer()), contentType, filename };
 }
 
 async function registerCandidateWithGasDrive(
