@@ -21,7 +21,6 @@ const GAS_ACTIONS = new Set<Action>([
   "deleteCandidate",
   "finalize",
   "saveDecision",
-  "getResultPdf",
 ]);
 
 export function canDispatchGas(env: Partial<GasDispatchEnv>, action: Action): env is GasDispatchEnv {

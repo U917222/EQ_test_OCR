@@ -14,6 +14,8 @@ interface Env {
   SCORING_API_URL?: string;
   GAS_API_URL?: string;
   FUNCTIONS_GAS_SECRET?: string;
+  PDF_RENDER_URL?: string;
+  PDF_RENDER_KEY?: string;
 }
 
 type JsonBody = Record<string, unknown>;

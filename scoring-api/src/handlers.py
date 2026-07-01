@@ -527,17 +527,32 @@ def handle_get_result_pdf(context: ApiContext, repo: ScoringRepository) -> dict[
         raise ApiError("not_found", f"Candidate not found: {candidate_id}")
     if not dashboard.get("result"):
         raise ApiError("validation", "採点結果がまだ確定していません。先に「結果を表示」または「採点確定」を実行してください。")
+    return build_pdf_response(
+        dashboard["candidate"],
+        dashboard["result"],
+        dashboard.get("rawCellSummary"),
+        candidate_id,
+    )
+
+
+def build_pdf_response(
+    candidate: dict[str, Any],
+    result: dict[str, Any],
+    raw_cell_summary: dict[str, Any] | None,
+    fallback_name: str = "",
+) -> dict[str, Any]:
+    """Render the result PDF and package it as the {filename, mimeType, base64} contract.
+
+    Shared by the Sheets-backed handle_get_result_pdf and the D1-only /render-pdf route,
+    so both paths return an identical response shape.
+    """
     try:
         from src.pdf import build_result_pdf
     except ImportError as error:
         raise ApiError("internal", "src.pdf.build_result_pdf is not available") from error
 
-    pdf_bytes = build_result_pdf(
-        dashboard["candidate"],
-        dashboard["result"],
-        dashboard.get("rawCellSummary"),
-    )
-    name = dashboard["candidate"].get("name") or candidate_id
+    pdf_bytes = build_result_pdf(candidate or {}, result or {}, raw_cell_summary)
+    name = (candidate.get("name") if isinstance(candidate, dict) else "") or fallback_name or "result"
     return {
         "filename": f"CHEQ_{name}.pdf",
         "mimeType": "application/pdf",
