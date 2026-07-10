@@ -169,8 +169,8 @@ def build_result_pdf_html(candidate: dict, result: dict, raw_cell_summary: dict)
     <table class="metrics">
       <tr>
         <td><span>総合判定</span><strong>{escape(str(result.get("total_rank") or "-"))}</strong></td>
-        <td><span>応答態度</span><strong>{escape(attitude_stage)}</strong></td>
         <td><span>マイナスポイント</span><strong>{escape(minus_label)}</strong></td>
+        <td><span>応答態度</span><strong>{escape(attitude_stage)}</strong></td>
         <td><span>要確認</span><strong>{escape(unresolved)}</strong></td>
       </tr>
     </table>

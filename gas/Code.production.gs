@@ -1024,8 +1024,8 @@ function buildCandidateResultPdfHtml_(data) {
     <table class="metrics">
       <tr>
         <td><span>総合判定</span><strong>${escapeHtmlForPdf_(result.total_rank || '-')}</strong></td>
-        <td><span>応答態度</span><strong>${escapeHtmlForPdf_(attitudeStage)}</strong></td>
         <td><span>マイナスポイント</span><strong>${escapeHtmlForPdf_(minusLabel)}</strong></td>
+        <td><span>応答態度</span><strong>${escapeHtmlForPdf_(attitudeStage)}</strong></td>
         <td><span>要確認</span><strong>${escapeHtmlForPdf_(unresolved)}</strong></td>
       </tr>
     </table>
