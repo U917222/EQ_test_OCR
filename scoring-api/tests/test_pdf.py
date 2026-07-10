@@ -47,6 +47,8 @@ def test_result_pdf_html_prefers_japanese_pdf_fonts():
     assert "検査日: 2026-06-24" in html
     assert "応募職種" not in html
     assert "総合判定</span><strong>B" in html
+    assert html.index("総合判定</span>") < html.index("マイナスポイント</span>")
+    assert html.index("マイナスポイント</span>") < html.index("応答態度</span>")
     assert "①セルフコントロール" in html
     assert "②コミュニケーション" in html
     assert "③状況認識力" in html
