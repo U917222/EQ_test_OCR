@@ -13,25 +13,25 @@ describe("scoringApiBackend configuration", () => {
     );
   });
 
-  it("dispatches supported actions when URL and secret are configured", () => {
+  it("never dispatches upstream when URL and secret are configured (D1 is authoritative)", () => {
     const env = {
       SCORING_API_URL: "https://example.test/api",
       SCORING_API_SECRET: "secret",
     };
     expect(() => assertScoringApiConfig(env)).not.toThrow();
-    expect(canDispatchScoringApi(env, "getResult")).toBe(true);
-    expect(canDispatchScoringApi(env, "listCandidateDocuments")).toBe(true);
-    expect(canDispatchScoringApi(env, "uploadCandidateDocument")).toBe(true);
-    expect(canDispatchScoringApi(env, "deleteCandidateDocument")).toBe(true);
+    expect(canDispatchScoringApi(env, "getResult")).toBe(false);
+    expect(canDispatchScoringApi(env, "listCandidateDocuments")).toBe(false);
+    expect(canDispatchScoringApi(env, "uploadCandidateDocument")).toBe(false);
+    expect(canDispatchScoringApi(env, "deleteCandidateDocument")).toBe(false);
     expect(canDispatchScoringApi(env, "listEvaluations")).toBe(false);
   });
 
-  it("accepts the legacy secret name during rolling migration", () => {
+  it("accepts the legacy secret name during rolling migration without enabling dispatch", () => {
     const env = {
       SCORING_API_URL: "https://example.test/api",
       FUNCTIONS_GAS_SECRET: "legacy-secret",
     };
     expect(() => assertScoringApiConfig(env)).not.toThrow();
-    expect(canDispatchScoringApi(env, "getResult")).toBe(true);
+    expect(canDispatchScoringApi(env, "getResult")).toBe(false);
   });
 });

@@ -126,7 +126,7 @@ describe("authenticated scoring-api R2 files", () => {
     expect(bucket.get).not.toHaveBeenCalled();
   });
 
-  it("uses scoring-api authorization when the upstream backend is configured", async () => {
+  it("still uses the local D1 authorization check when the upstream backend is configured (D1 is authoritative)", async () => {
     const bucket = createBucket();
     const upstreamFetch = vi.fn(async () => new Response(JSON.stringify({
       ok: false,
@@ -144,10 +144,10 @@ describe("authenticated scoring-api R2 files", () => {
 
     const response = await onRequestGet(context);
 
-    expect(response.status).toBe(403);
-    expect(upstreamFetch).toHaveBeenCalledOnce();
-    expect(context.env.CHEQ_DB.prepare).not.toHaveBeenCalled();
-    expect(bucket.get).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(upstreamFetch).not.toHaveBeenCalled();
+    expect(context.env.CHEQ_DB.prepare).toHaveBeenCalledWith(expect.stringContaining("FROM users"));
+    expect(context.env.CHEQ_DB.prepare).toHaveBeenCalledWith(expect.stringContaining("FROM candidates"));
   });
 
   it("rejects path traversal before accessing R2", async () => {

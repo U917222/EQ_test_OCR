@@ -12,24 +12,13 @@ type JsonBody = Record<string, unknown>;
 
 export interface ScoringApiDispatchEnv extends ScoringApiEnv {}
 
-const SCORING_API_ACTIONS = new Set<Action>([
-  "me",
-  "listCandidates",
-  "getDashboard",
-  "getCells",
-  "getResult",
-  "listCandidateDocuments",
-  "registerCandidate",
-  "attachScoresheet",
-  "uploadCandidateDocument",
-  "deleteCandidateDocument",
-  "updateCandidate",
-  "saveCells",
-  "updateStatus",
-  "deleteCandidate",
-  "finalize",
-  "saveDecision",
-]);
+// D1 is the source of truth since the 2026-07-01 cutover (see d1Backend.ts, which
+// implements every Action independently). Nothing is dispatched upstream today:
+// SCORING_API_URL is always present as a plain var, so configuring SCORING_API_SECRET
+// (required to satisfy assertScoringApiConfig below and avoid a hard 500) must never by
+// itself resurrect the pre-cutover Sheets-backed dispatch. Only add an action here
+// alongside an explicit, reviewed decision to route that action upstream again.
+const SCORING_API_ACTIONS = new Set<Action>([]);
 
 export function assertScoringApiConfig(env: Partial<ScoringApiDispatchEnv>): void {
   const hasUrl = Boolean(env.SCORING_API_URL);
