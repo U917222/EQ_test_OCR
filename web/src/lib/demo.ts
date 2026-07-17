@@ -1,5 +1,5 @@
 // デモ表示モード。VITE_DEMO=1 のときだけ有効。
-// 裏側(Functions/GAS)に接続せず、サンプルデータで完成イメージを見るための仕組み。
+// バックエンドに接続せず、サンプルデータで完成イメージを見るための仕組み。
 // 本番ビルドや実バックエンド接続時は VITE_DEMO を外す(または 0)。
 import {
   Candidate,
@@ -308,7 +308,7 @@ function resultFor(candidateId: string): CandidateResult {
     crossCheck: seed % 3 === 0 || !goalItem
       ? []
       : [{ item: goalItem.label, computed: goalItem.total, handwritten: Math.max(0, goalItem.total - 2) }],
-    notes: "旧GAS版のCHEQ個票確認用デモデータです。",
+    notes: "CHEQ個票確認用のデモデータです。",
     finalizedBy: DEMO_USER.email,
     finalizedAt: "2026-06-23T09:30:00+09:00",
     status: "scored",

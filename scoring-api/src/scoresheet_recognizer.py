@@ -74,7 +74,7 @@ class ScoresheetResult:
     failure_message: str | None = None
 
     def to_cells_payload(self) -> dict:
-        """GAS Webhook の cells 契約 (docs/cell-contract.md) に変換する。"""
+        """OCR API の cells 契約に変換する。"""
         cells = {}
         for key, value in self.values.items():
             cell: dict = {"value": value, "confidence": self.confidence_by_cell[key]}
@@ -90,7 +90,7 @@ class ScoresheetResult:
         return {"cells": cells, "confidenceAvg": avg, "unresolvedCount": unresolved}
 
     def to_recognition_payload(self, image_links: dict[str, str] | None = None) -> dict:
-        """GAS Webhook の recognition オブジェクト形式 (docs/cell-contract.md) に変換する。"""
+        """OCR API の recognition オブジェクト形式に変換する。"""
         payload = self.to_cells_payload()
         payload["sheet"] = "cheq-scoresheet-p5"
         payload["pageIndex"] = self.page_index
@@ -148,7 +148,7 @@ def empty_scoresheet_result() -> ScoresheetResult:
 
 
 def failed_scoresheet_result(code: str, message: str) -> ScoresheetResult:
-    """処理失敗時にGASへ返す構造化された全件レビュー送り結果。"""
+    """処理失敗時に返す構造化された全件レビュー送り結果。"""
     result = empty_scoresheet_result()
     result.failure_code = code
     result.failure_message = message

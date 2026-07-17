@@ -1,10 +1,15 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { postToGas, readJsonResponse, type GasEnv } from "./gasClient";
+import {
+  postToScoringApi,
+  readJsonResponse,
+  scoringApiSecret,
+  type ScoringApiEnv,
+} from "./scoringApiClient";
 import { createEnvelope } from "./sign";
 
-const env: GasEnv = {
+const env: ScoringApiEnv = {
   SCORING_API_URL: "https://scoring.example.test/api",
-  FUNCTIONS_GAS_SECRET: "test-secret",
+  SCORING_API_SECRET: "test-secret",
 };
 
 function envelope() {
@@ -17,7 +22,7 @@ function envelope() {
   });
 }
 
-describe("gasClient", () => {
+describe("scoringApiClient", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -29,7 +34,7 @@ describe("gasClient", () => {
       .mockResolvedValueOnce(new Response(JSON.stringify({ ok: true }), { status: 200 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await postToGas(env, envelope());
+    const response = await postToScoringApi(env, envelope());
 
     expect(response.status).toBe(200);
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -43,7 +48,7 @@ describe("gasClient", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ ok: false }), { status: 400 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    const response = await postToGas(env, envelope());
+    const response = await postToScoringApi(env, envelope());
 
     expect(response.status).toBe(400);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -51,5 +56,10 @@ describe("gasClient", () => {
 
   it("rejects invalid upstream JSON", async () => {
     await expect(readJsonResponse(new Response("not json", { status: 200 }))).rejects.toThrow("invalid JSON");
+  });
+
+  it("prefers the new secret name and falls back to the legacy name", () => {
+    expect(scoringApiSecret({ SCORING_API_URL: "https://example.test", SCORING_API_SECRET: "new", FUNCTIONS_GAS_SECRET: "old" })).toBe("new");
+    expect(scoringApiSecret({ SCORING_API_URL: "https://example.test", FUNCTIONS_GAS_SECRET: "old" })).toBe("old");
   });
 });

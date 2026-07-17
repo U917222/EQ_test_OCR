@@ -1,7 +1,11 @@
 import { verifyAccessJwt } from "../_lib/accessJwt";
 import { errorResponse, HttpError, responseFromError } from "../_lib/errors";
 import { dispatchD1 } from "../_lib/d1Backend";
-import { canDispatchGas, dispatchGas } from "../_lib/gasBackend";
+import {
+  assertScoringApiConfig,
+  canDispatchScoringApi,
+  dispatchScoringApi,
+} from "../_lib/scoringApiBackend";
 import { isAction, isWriteAction, type Action } from "../_lib/roles";
 
 interface Env {
@@ -12,7 +16,8 @@ interface Env {
   CHEQ_DB: D1Database;
   CHEQ_FILES?: R2Bucket;
   SCORING_API_URL?: string;
-  GAS_API_URL?: string;
+  SCORING_API_SECRET?: string;
+  /** Temporary rolling-migration fallback. */
   FUNCTIONS_GAS_SECRET?: string;
   PDF_RENDER_URL?: string;
   PDF_RENDER_KEY?: string;
@@ -29,8 +34,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const body = await readJsonBody(context.request);
     const { email } = await verifyAccessJwt(context.request, context.env);
     getOperationId(action, body);
-    if (canDispatchGas(context.env, action)) {
-      return dispatchGas(context.env, action, email, body);
+    assertScoringApiConfig(context.env);
+    if (canDispatchScoringApi(context.env, action)) {
+      return dispatchScoringApi(context.env, action, email, body);
     }
     const waitUntil = typeof context.waitUntil === "function" ? context.waitUntil.bind(context) : undefined;
     return dispatchD1(context.env, action, email, body, waitUntil);

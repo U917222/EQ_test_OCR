@@ -1,13 +1,18 @@
 import { HttpError } from "./errors";
-import { postToGas, readJsonResponse, type GasEnv } from "./gasClient";
+import {
+  postToScoringApi,
+  readJsonResponse,
+  scoringApiSecret,
+  type ScoringApiEnv,
+} from "./scoringApiClient";
 import { createEnvelope } from "./sign";
 import type { Action } from "./roles";
 
 type JsonBody = Record<string, unknown>;
 
-export interface GasDispatchEnv extends GasEnv {}
+export interface ScoringApiDispatchEnv extends ScoringApiEnv {}
 
-const GAS_ACTIONS = new Set<Action>([
+const SCORING_API_ACTIONS = new Set<Action>([
   "me",
   "listCandidates",
   "getDashboard",
@@ -23,12 +28,27 @@ const GAS_ACTIONS = new Set<Action>([
   "saveDecision",
 ]);
 
-export function canDispatchGas(env: Partial<GasDispatchEnv>, action: Action): env is GasDispatchEnv {
-  return Boolean((env.SCORING_API_URL || env.GAS_API_URL) && env.FUNCTIONS_GAS_SECRET && GAS_ACTIONS.has(action));
+export function assertScoringApiConfig(env: Partial<ScoringApiDispatchEnv>): void {
+  const hasUrl = Boolean(env.SCORING_API_URL);
+  const hasSecret = Boolean(scoringApiSecret(env));
+  if (hasUrl !== hasSecret) {
+    throw new HttpError(
+      500,
+      "internal",
+      "SCORING_API_URL and SCORING_API_SECRET must be configured together",
+    );
+  }
 }
 
-export async function dispatchGas(
-  env: GasDispatchEnv,
+export function canDispatchScoringApi(
+  env: Partial<ScoringApiDispatchEnv>,
+  action: Action,
+): env is ScoringApiDispatchEnv {
+  return Boolean(env.SCORING_API_URL && scoringApiSecret(env) && SCORING_API_ACTIONS.has(action));
+}
+
+export async function dispatchScoringApi(
+  env: ScoringApiDispatchEnv,
   action: Action,
   email: string,
   payload: JsonBody,
@@ -40,10 +60,10 @@ export async function dispatchGas(
     operationId: operationIdFrom(payload),
     payload,
   });
-  const upstream = await postToGas(env, envelope);
+  const upstream = await postToScoringApi(env, envelope);
   const body = await readJsonResponse(upstream);
   if (!isRecord(body)) {
-    throw new HttpError(502, "upstream", "GAS returned an invalid API response");
+    throw new HttpError(502, "upstream", "scoring-api returned an invalid API response");
   }
 
   return new Response(JSON.stringify(body), {

@@ -1,35 +1,37 @@
 import { HttpError } from "./errors";
 import { type Envelope, signEnvelope } from "./sign";
 
-export interface GasEnv {
-  FUNCTIONS_GAS_SECRET: string;
-  GAS_API_URL?: string;
-  SCORING_API_URL?: string;
+export interface ScoringApiEnv {
+  SCORING_API_URL: string;
+  SCORING_API_SECRET?: string;
+  /** Temporary rolling-migration fallback. Remove after all environments use SCORING_API_SECRET. */
+  FUNCTIONS_GAS_SECRET?: string;
 }
 
-const GAS_TIMEOUT_MS = 60_000;
+const SCORING_API_TIMEOUT_MS = 60_000;
 const MAX_ATTEMPTS = 3;
 const RETRY_BASE_DELAY_MS = 250;
 const RETRYABLE_STATUS = new Set([408, 429, 500, 502, 503, 504]);
 
-export async function postToGas(env: GasEnv, envelope: Envelope): Promise<Response> {
-  const apiUrl = env.SCORING_API_URL || env.GAS_API_URL;
-  if (!apiUrl) {
-    throw new HttpError(500, "internal", "Missing SCORING_API_URL or GAS_API_URL");
+export async function postToScoringApi(env: ScoringApiEnv, envelope: Envelope): Promise<Response> {
+  const apiUrl = env.SCORING_API_URL;
+  const apiSecret = scoringApiSecret(env);
+  if (!apiSecret) {
+    throw new HttpError(500, "internal", "SCORING_API_SECRET is not configured");
   }
 
   let lastError: unknown = null;
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     const attemptEnvelope = attempt === 1 ? envelope : freshEnvelope(envelope);
-    const signature = await signEnvelope(attemptEnvelope, env.FUNCTIONS_GAS_SECRET);
+    const signature = await signEnvelope(attemptEnvelope, apiSecret);
     const url = new URL(apiUrl);
     url.searchParams.set("X-Signature", signature);
     url.searchParams.set("X-Timestamp", String(attemptEnvelope.claims.ts));
     url.searchParams.set("X-Nonce", attemptEnvelope.claims.nonce);
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), GAS_TIMEOUT_MS);
+    const timeoutId = setTimeout(() => controller.abort(), SCORING_API_TIMEOUT_MS);
 
     try {
       const response = await fetch(url, {
@@ -71,16 +73,20 @@ export async function postToGas(env: GasEnv, envelope: Envelope): Promise<Respon
   }
 
   if (lastError instanceof Error && lastError.name === "AbortError") {
-    throw new HttpError(502, "upstream", "GAS request timed out");
+    throw new HttpError(502, "upstream", "scoring-api request timed out");
   }
-  throw new HttpError(502, "upstream", "GAS request failed");
+  throw new HttpError(502, "upstream", "scoring-api request failed");
+}
+
+export function scoringApiSecret(env: Partial<ScoringApiEnv>): string {
+  return env.SCORING_API_SECRET || env.FUNCTIONS_GAS_SECRET || "";
 }
 
 export async function readJsonResponse(response: Response): Promise<unknown> {
   try {
     return await response.json();
   } catch {
-    throw new HttpError(502, "upstream", "GAS returned an invalid JSON response");
+    throw new HttpError(502, "upstream", "scoring-api returned an invalid JSON response");
   }
 }
 

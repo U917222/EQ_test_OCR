@@ -5,11 +5,11 @@ export type UploadFile = {
 };
 
 export const D1_DIRECT_MAX_BYTES = 900 * 1024;
-export const GAS_DRIVE_MAX_BYTES = 9 * 1024 * 1024;
+export const MAX_ORIGINAL_UPLOAD_BYTES = 9 * 1024 * 1024;
 
 export async function prepareUploadFile(file: File): Promise<UploadFile> {
   if (file.type === "application/pdf") {
-    if (file.size > GAS_DRIVE_MAX_BYTES) {
+    if (file.size > MAX_ORIGINAL_UPLOAD_BYTES) {
       throw new Error("PDFは現在9MB以下のみ登録できます。より大きいPDFはR2有効化が必要です。");
     }
     return {
@@ -54,7 +54,7 @@ export async function compressImage(file: File): Promise<File> {
   }
 
   if (blob.size > D1_DIRECT_MAX_BYTES) {
-    if (file.size <= GAS_DRIVE_MAX_BYTES) return file;
+  if (file.size <= MAX_ORIGINAL_UPLOAD_BYTES) return file;
     throw new Error("画像は現在9MB以下のみ登録できます。より大きい画像はR2有効化が必要です。");
   }
 

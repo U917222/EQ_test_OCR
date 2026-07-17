@@ -28,7 +28,7 @@ def test_blank_question_goes_to_review():
         assert result.review_images[qkey]  # PNGが切り出されている
 
 
-def test_payload_shape_matches_gas_contract():
+def test_payload_shape_matches_recognition_contract():
     result = empty_result()
     payload = result.to_recognition_payload({"q001": "https://example.com"})
 

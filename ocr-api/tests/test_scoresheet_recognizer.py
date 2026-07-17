@@ -85,7 +85,7 @@ def test_payload_matches_cell_contract():
     assert payload["unresolvedCount"] == 1
 
 
-def test_recognition_payload_for_webhook():
+def test_recognition_payload_matches_api_contract():
     values = _all_values()
     result = recognize_scoresheet(make_synthetic_scoresheet(values))
     payload = result.to_recognition_payload({"s01": "https://example.com/s01.png"})
@@ -124,13 +124,13 @@ def test_pdf_render_size_is_capped():
 
 
 def test_failed_scoresheet_result_returns_structured_failure_payload():
-    result = failed_scoresheet_result("file_too_large", "Drive file is too large")
+    result = failed_scoresheet_result("file_too_large", "Uploaded file is too large")
     payload = result.to_recognition_payload()
 
     assert payload["status"] == "failed"
     assert payload["error"] == {
         "code": "file_too_large",
-        "message": "Drive file is too large",
+        "message": "Uploaded file is too large",
     }
     assert payload["unresolvedCount"] == len(ALL_CELL_KEYS)
     assert payload["cells"]["s01"]["reason"] == "file_too_large"
