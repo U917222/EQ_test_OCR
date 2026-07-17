@@ -135,6 +135,41 @@ export type AttachScoresheetPayload = {
   operationId: string;
 };
 
+export type CandidateDocumentCategory = "resume" | "essay" | "other";
+
+export type CandidateDocument = {
+  documentId: string;
+  candidateId: string;
+  category: CandidateDocumentCategory;
+  filename: string;
+  mimeType: "application/pdf";
+  sizeBytes: number;
+  uploadedAt: string;
+  uploadedBy: string;
+  url: string;
+};
+
+export type ListCandidateDocumentsResponse = {
+  documents: CandidateDocument[];
+};
+
+export type UploadCandidateDocumentPayload = {
+  candidateId: string;
+  category: CandidateDocumentCategory;
+  file: {
+    name: string;
+    mimeType: string;
+    base64: string;
+  };
+  operationId: string;
+};
+
+export type DeleteCandidateDocumentPayload = {
+  candidateId: string;
+  documentId: string;
+  operationId: string;
+};
+
 export type UpdateCandidatePayload = {
   candidateId: string;
   name: string;

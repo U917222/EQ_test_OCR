@@ -20,6 +20,9 @@ describe("scoringApiBackend configuration", () => {
     };
     expect(() => assertScoringApiConfig(env)).not.toThrow();
     expect(canDispatchScoringApi(env, "getResult")).toBe(true);
+    expect(canDispatchScoringApi(env, "listCandidateDocuments")).toBe(true);
+    expect(canDispatchScoringApi(env, "uploadCandidateDocument")).toBe(true);
+    expect(canDispatchScoringApi(env, "deleteCandidateDocument")).toBe(true);
     expect(canDispatchScoringApi(env, "listEvaluations")).toBe(false);
   });
 

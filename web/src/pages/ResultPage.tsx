@@ -22,6 +22,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EvaluationSection } from "@/components/evaluation/EvaluationSection";
+import { CandidateDocumentsCard } from "@/components/candidates/CandidateDocumentsCard";
 import { useAuth } from "@/lib/auth";
 import { normalizeGetResultResponse } from "@/lib/api-normalizers";
 import { buildProfileChartData, CHEQ_ITEMS, traitCopyForStage } from "@/lib/cheq";
@@ -249,6 +250,8 @@ export default function ResultPage() {
           </div>
         </CardContent>
       </Card>
+
+      <CandidateDocumentsCard candidateId={id} />
 
       {result === null ? (
         <Card>

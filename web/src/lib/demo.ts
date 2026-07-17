@@ -3,6 +3,7 @@
 // 本番ビルドや実バックエンド接続時は VITE_DEMO を外す(または 0)。
 import {
   Candidate,
+  CandidateDocument,
   CellKey,
   DashboardResponse,
   GetCellsResponse,
@@ -334,6 +335,8 @@ function getResultResponse(candidateId: string): DemoGetResultResponse {
 const MINIMAL_PDF =
   "%PDF-1.1\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 300]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF";
 
+const demoCandidateDocuments = new Map<string, CandidateDocument[]>();
+
 function getDashboardResponse(yearInput?: unknown): DashboardResponse {
   const years = Array.from(new Set(candidates.map((candidate) => new Date(candidate.testDate).getFullYear()))).sort((a, b) => b - a);
   const year = Number(yearInput) || years[0] || new Date().getFullYear();
@@ -487,6 +490,37 @@ export async function getDemoResponse(action: string, payload: Record<string, un
       return cellsResponse;
     case "getResult":
       return getResultResponse(String(payload.candidateId ?? "C-1003"));
+    case "listCandidateDocuments":
+      return { documents: demoCandidateDocuments.get(String(payload.candidateId ?? "")) ?? [] };
+    case "uploadCandidateDocument": {
+      const candidateId = String(payload.candidateId ?? "");
+      const file = typeof payload.file === "object" && payload.file !== null
+        ? payload.file as { name?: unknown; base64?: unknown }
+        : {};
+      const base64 = String(file.base64 ?? "");
+      const document: CandidateDocument = {
+        documentId: String(payload.operationId ?? crypto.randomUUID()),
+        candidateId,
+        category: payload.category === "essay" || payload.category === "other" ? payload.category : "resume",
+        filename: String(file.name ?? "参考資料.pdf"),
+        mimeType: "application/pdf",
+        sizeBytes: Math.floor(base64.length * 0.75),
+        uploadedAt: new Date().toISOString(),
+        uploadedBy: DEMO_USER.email,
+        url: `data:application/pdf;base64,${base64}`,
+      };
+      demoCandidateDocuments.set(candidateId, [document, ...(demoCandidateDocuments.get(candidateId) ?? [])]);
+      return { document };
+    }
+    case "deleteCandidateDocument": {
+      const candidateId = String(payload.candidateId ?? "");
+      const documentId = String(payload.documentId ?? "");
+      demoCandidateDocuments.set(
+        candidateId,
+        (demoCandidateDocuments.get(candidateId) ?? []).filter((document) => document.documentId !== documentId),
+      );
+      return { deleted: true, candidateId, documentId };
+    }
     case "registerCandidate":
       return {
         candidate: {

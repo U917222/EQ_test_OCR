@@ -12,6 +12,7 @@ dependencies = [
     "opencv-python-headless>=4.13.0.92",
     "numpy>=2.5.0",
     "pypdfium2>=5.10.1",
+    "boto3>=1.43.50",
 ]
 
 [tool.uv]

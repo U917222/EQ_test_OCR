@@ -2,6 +2,12 @@ import { HttpError } from "./errors";
 import { isWriteAction, type Action, type Role } from "./roles";
 import { CELL_KEYS, defaultCells, scoreCandidate, type MasterRows } from "./cheqScoring";
 import { exportD1ToSpreadsheetBackup } from "./spreadsheetBackup";
+import {
+  deleteAllCandidateDocuments,
+  deleteCandidateDocument as deleteCandidateDocumentFromR2,
+  listCandidateDocuments as listCandidateDocumentsFromR2,
+  uploadCandidateDocument as uploadCandidateDocumentToR2,
+} from "./candidateDocuments";
 
 interface Env {
   CHEQ_DB: D1Database;
@@ -27,9 +33,12 @@ const REQUIRED_ROLES: Record<Action, Role> = {
   getDashboard: "operator",
   getCells: "operator",
   getResult: "operator",
+  listCandidateDocuments: "operator",
   getResultPdf: "reviewer",
   registerCandidate: "operator",
   attachScoresheet: "operator",
+  uploadCandidateDocument: "operator",
+  deleteCandidateDocument: "operator",
   updateCandidate: "operator",
   saveCells: "operator",
   updateStatus: "operator",
@@ -109,10 +118,22 @@ async function handleAction(
       return getCells(db, requireCandidateId(context.payload));
     case "getResult":
       return getResult(db, requireCandidateId(context.payload));
+    case "listCandidateDocuments":
+      return { documents: await listCandidateDocuments(env, requireCandidateId(context.payload)) };
     case "registerCandidate":
       return registerCandidate(env, context);
     case "attachScoresheet":
       return attachScoresheet(env, context);
+    case "uploadCandidateDocument":
+      return {
+        document: await uploadCandidateDocument(
+          env,
+          context,
+          requireCandidateId(context.payload),
+        ),
+      };
+    case "deleteCandidateDocument":
+      return deleteCandidateDocument(env, context.payload);
     case "updateCandidate":
       return updateCandidate(db, requireCandidateId(context.payload), context.payload);
     case "saveCells":
@@ -468,6 +489,61 @@ async function getResult(db: D1Database, candidateId: string) {
     } : null,
     sourceUrl: candidate.source_url ?? "",
   };
+}
+
+async function listCandidateDocuments(env: Env, candidateId: string) {
+  await requireCandidate(env.CHEQ_DB, candidateId);
+  return listCandidateDocumentsFromR2(requireCandidateDocumentsBucket(env), candidateId);
+}
+
+export async function uploadCandidateDocument(env: Env, context: Context, candidateId: string) {
+  await requireCandidate(env.CHEQ_DB, candidateId);
+  const bucket = requireCandidateDocumentsBucket(env);
+  const document = await uploadCandidateDocumentToR2(
+    bucket,
+    candidateId,
+    String(context.payload.category ?? ""),
+    asRecord(context.payload.file),
+    context.operator,
+    context.operationId ?? "",
+  );
+  if (!await getCandidate(env.CHEQ_DB, candidateId)) {
+    try {
+      await deleteCandidateDocumentFromR2(bucket, candidateId, document.documentId);
+    } catch (error) {
+      if (!(error instanceof HttpError && error.status === 404)) throw error;
+    }
+    throw new HttpError(409, "conflict", "候補者が削除されたため、参考資料を保存できませんでした");
+  }
+  return document;
+}
+
+async function deleteCandidateDocument(env: Env, payload: Record<string, unknown>) {
+  const candidateId = requireCandidateId(payload);
+  await requireCandidate(env.CHEQ_DB, candidateId);
+  const deleted = await deleteCandidateDocumentFromR2(
+    requireCandidateDocumentsBucket(env),
+    candidateId,
+    String(payload.documentId ?? ""),
+  );
+  return {
+    deleted: true,
+    candidateId: deleted.candidateId,
+    documentId: deleted.documentId,
+  };
+}
+
+async function requireCandidate(db: D1Database, candidateId: string): Promise<void> {
+  if (!await getCandidate(db, candidateId)) {
+    throw new HttpError(404, "not_found", `Candidate not found: ${candidateId}`);
+  }
+}
+
+function requireCandidateDocumentsBucket(env: Env): R2Bucket {
+  if (!env.CHEQ_FILES) {
+    throw new HttpError(500, "internal", "参考資料の保存先(R2)が設定されていません");
+  }
+  return env.CHEQ_FILES;
 }
 
 async function getResultPdf(env: Env, candidateId: string) {
@@ -1025,16 +1101,25 @@ async function updateStatus(db: D1Database, candidateId: string, status: string)
   return { candidate: apiCandidate(candidate) };
 }
 
-async function deleteCandidate(env: Env, candidateId: string, waitUntil?: (promise: Promise<unknown>) => void) {
+export async function deleteCandidate(env: Env, candidateId: string, waitUntil?: (promise: Promise<unknown>) => void) {
   const db = env.CHEQ_DB;
   const candidate = await getCandidate(db, candidateId);
   if (!candidate) {
+    let documentsDeleted = 0;
+    let documentsFailed = 0;
+    if (env.CHEQ_FILES) {
+      try {
+        documentsDeleted = await deleteAllCandidateDocuments(env.CHEQ_FILES, candidateId);
+      } catch {
+        documentsFailed = 1;
+      }
+    }
     return {
       deleted: true,
       candidateId,
       alreadyDeleted: true,
-      filesDeleted: 0,
-      filesFailed: 0,
+      filesDeleted: documentsDeleted,
+      filesFailed: documentsFailed,
     };
   }
   const files = await db
@@ -1049,7 +1134,14 @@ async function deleteCandidate(env: Env, candidateId: string, waitUntil?: (promi
   const r2Keys = files.results
     .filter((file) => (file.storage_kind ?? "r2") === "r2" && file.r2_key.startsWith("candidates/"))
     .map((file) => file.r2_key);
+  let documentsDeleted = 0;
+  let documentsFailed = 0;
   if (env.CHEQ_FILES) {
+    try {
+      documentsDeleted = await deleteAllCandidateDocuments(env.CHEQ_FILES, candidateId);
+    } catch {
+      documentsFailed = 1;
+    }
     const cleanup = deleteR2Objects(env.CHEQ_FILES, r2Keys);
     if (waitUntil) waitUntil(cleanup);
     else await cleanup;
@@ -1060,6 +1152,8 @@ async function deleteCandidate(env: Env, candidateId: string, waitUntil?: (promi
     candidateId,
     candidate: apiCandidate(candidate),
     filesScheduledForDeletion: env.CHEQ_FILES ? r2Keys.length : 0,
+    filesDeleted: documentsDeleted,
+    filesFailed: documentsFailed,
   };
 }
 

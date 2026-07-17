@@ -1,6 +1,9 @@
 import hmac
 
+import pytest
+
 from src.wire import (
+    ApiError,
     assert_audience_and_action,
     canonical_json,
     parse_envelope,
@@ -78,3 +81,66 @@ def test_legacy_audience_is_accepted_during_rolling_migration():
 
     assert action == "getResult"
     assert operation_id == ""
+
+
+def test_candidate_document_actions_are_part_of_the_signed_action_contract():
+    upload_operation_id_value = "11111111-1111-4111-8111-111111111111"
+    list_action, list_operation_id = assert_audience_and_action(
+        {"aud": "scoring-api", "action": "listCandidateDocuments"},
+        {"candidateId": "cand-1"},
+        "",
+    )
+    upload_action, upload_operation_id = assert_audience_and_action(
+        {
+            "aud": "scoring-api",
+            "action": "uploadCandidateDocument",
+            "operationId": upload_operation_id_value,
+        },
+        {"candidateId": "cand-1"},
+        "",
+    )
+    delete_action, delete_operation_id = assert_audience_and_action(
+        {
+            "aud": "scoring-api",
+            "action": "deleteCandidateDocument",
+            "operationId": "op-delete",
+        },
+        {"candidateId": "cand-1"},
+        "",
+    )
+
+    assert (list_action, list_operation_id) == ("listCandidateDocuments", "")
+    assert (upload_action, upload_operation_id) == (
+        "uploadCandidateDocument",
+        upload_operation_id_value,
+    )
+    assert (delete_action, delete_operation_id) == ("deleteCandidateDocument", "op-delete")
+
+
+@pytest.mark.parametrize("action", ["uploadCandidateDocument", "deleteCandidateDocument"])
+def test_candidate_document_writes_require_operation_id(action):
+    with pytest.raises(ApiError) as error:
+        assert_audience_and_action(
+            {"aud": "scoring-api", "action": action},
+            {"candidateId": "cand-1"},
+            "",
+        )
+
+    assert error.value.code == "validation"
+    assert error.value.message == "operationId is required"
+
+
+def test_candidate_document_upload_requires_uuid_operation_id():
+    with pytest.raises(ApiError) as error:
+        assert_audience_and_action(
+            {
+                "aud": "scoring-api",
+                "action": "uploadCandidateDocument",
+                "operationId": "not-a-uuid",
+            },
+            {"candidateId": "cand-1"},
+            "",
+        )
+
+    assert error.value.code == "validation"
+    assert error.value.message == "uploadCandidateDocument operationId must be a UUID"

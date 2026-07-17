@@ -21,6 +21,94 @@
 
 ---
 
+## 採点用紙をGoogle DriveからR2へ切り替える
+
+この切り替えではGoogle Sheetsとscoring-apiを維持し、採点用紙原本だけをR2へ移します。既存のDriveファイルは移動・削除しません。プロジェクト方針どおり、本番操作はPMが実施します。
+
+### 1. R2を有効化して非公開バケットを作る
+
+1. Cloudflare Dashboardの「R2 Object Storage」でR2を有効化する（支払い方法の登録を求められる場合があります）。
+2. Storage classが **Standard** の非公開バケット `cheq-eqtest-files` を作る。公開アクセスやカスタムドメインは設定しない。
+3. 確認:
+
+```bash
+cd web
+pnpm exec wrangler r2 bucket info cheq-eqtest-files
+```
+
+`web/wrangler.toml` の `CHEQ_FILES` bindingはこのバケット名を参照します。バケット作成前にPagesをデプロイするとbinding解決で失敗するため、必ず先に作成してください。
+
+### 2. Cloud Run専用のR2トークンを作る
+
+Cloudflare DashboardのR2 API Tokensから次の条件で作成します。
+
+- 権限: Object Read & Write
+- 対象: `cheq-eqtest-files` のみ
+- Admin権限: なし
+
+表示されるAccess Key IDとSecret Access Keyは再表示できないため、それぞれGoogle Secret Managerの `cheq-r2-access-key-id` と `cheq-r2-secret-access-key` に保存します。値をリポジトリ、`.env`、コマンド履歴へ直接書かないでください。
+
+### 3. Pagesを先にデプロイする
+
+R2の既存URLを認証付きで配信できるよう、scoring-apiの保存先を変える前にPagesをデプロイします。
+
+```bash
+cd web
+pnpm test
+pnpm build
+pnpm run deploy
+```
+
+Cloudflare DashboardのPages projectで、ProductionのR2 binding `CHEQ_FILES` が `cheq-eqtest-files` を指していることを確認します。
+
+### 4. scoring-apiへR2設定を追加する（まだDriveのまま）
+
+`<CLOUDFLARE_ACCOUNT_ID>` とSecret Managerのversion番号（例では `1`）を実値に置き換えます。
+
+```bash
+gcloud run services update scoring-api \
+  --region asia-northeast1 \
+  --update-env-vars SCORING_UPLOAD_BACKEND=drive,R2_ACCOUNT_ID=<CLOUDFLARE_ACCOUNT_ID>,R2_BUCKET_NAME=cheq-eqtest-files \
+  --update-secrets R2_ACCESS_KEY_ID=cheq-r2-access-key-id:1,R2_SECRET_ACCESS_KEY=cheq-r2-secret-access-key:1
+```
+
+続いてR2対応コードをデプロイします。この時点では `drive` のため、保存先は変わりません。
+
+```bash
+make -C scoring-api test
+make -C scoring-api deploy
+```
+
+### 5. R2へ切り替えてスモークテストする
+
+```bash
+gcloud run services update scoring-api \
+  --region asia-northeast1 \
+  --update-env-vars SCORING_UPLOAD_BACKEND=r2
+```
+
+管理画面で小さなテストPDFを1件登録し、次を順に確認します。
+
+1. 登録が成功し、候補者の `sourceUrl` が `/files/r2/` で始まる。
+2. ログイン中の管理画面から原本を開ける。
+3. 未認証ブラウザでは原本を開けない。
+4. 候補者を削除すると、R2 Dashboardから該当 `candidates/<candidateId>/...` objectも消える。
+5. 既存候補者のGoogle Drive原本も引き続き開ける。
+6. 候補者詳細の「参考資料」でPDFを追加し、一覧・プレビュー・削除ができる。
+7. 参考資料の追加前後で候補者の採点ステータスが変わらない。
+
+### エラー時の即時ロールバック
+
+保存先だけをDriveへ戻します。コードやR2 bindingは残すことで、切り替え中に作成済みのR2 URLは引き続き閲覧できます。
+
+```bash
+gcloud run services update scoring-api \
+  --region asia-northeast1 \
+  --update-env-vars SCORING_UPLOAD_BACKEND=drive
+```
+
+その後、小さなPDFを再登録してGoogle Drive URLになることを確認します。R2内の既存objectは、参照状況を確認するまで一括削除しないでください。
+
 ## 各コンポーネント別デプロイ
 
 ### Web（Cloudflare Pages + Functions）

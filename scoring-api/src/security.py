@@ -11,6 +11,7 @@ from src.config import Settings
 from src.repository import ScoringRepository, normalize_email, now_iso, parse_bool
 from src.wire import (
     API_OPERATION_TTL_SECONDS,
+    REQUIRED_ROLES,
     ROLE_RANK,
     WRITE_ACTIONS,
     ApiContext,
@@ -103,22 +104,7 @@ def resolve_user(repo: ScoringRepository, email: Any) -> dict[str, str]:
 
 
 def authorize(action: str, role: str) -> None:
-    required_roles = {
-        "me": "operator",
-        "listCandidates": "operator",
-        "getDashboard": "operator",
-        "getCells": "operator",
-        "getResult": "operator",
-        "getResultPdf": "reviewer",
-        "registerCandidate": "operator",
-        "updateCandidate": "operator",
-        "saveCells": "operator",
-        "updateStatus": "operator",
-        "deleteCandidate": "operator",
-        "finalize": "reviewer",
-        "saveDecision": "reviewer",
-    }
-    required = required_roles.get(action)
+    required = REQUIRED_ROLES.get(action)
     if not required or ROLE_RANK.get(role, 0) < ROLE_RANK[required]:
         raise ApiError("forbidden", "Insufficient role")
 

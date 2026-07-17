@@ -5,12 +5,15 @@ import pytest
 from src.handlers import (
     finalize_candidate,
     handle_attach_scoresheet,
+    handle_delete_candidate_document,
     handle_delete_candidate,
     handle_get_dashboard,
     handle_get_cells,
     handle_get_result_pdf,
+    handle_list_candidate_documents,
     handle_register_candidate,
     handle_save_decision,
+    handle_upload_candidate_document,
 )
 from src.repository import CELL_KEYS
 from src.wire import ApiContext
@@ -226,6 +229,44 @@ def test_register_candidate_persists_upload_before_recognition(monkeypatch):
     assert response["candidate"]["status"] == "needs_review"
 
 
+def test_register_candidate_cleans_up_r2_when_source_url_update_fails(monkeypatch):
+    source_url = "/files/r2/cand-1/11111111-1111-4111-8111-111111111111/cand-1_scoresheet.pdf"
+    deleted_urls = []
+
+    class FailingSourceUrlRepo(FakeRepo):
+        def update_candidate_source_url(self, candidate_id, stored_source_url):
+            raise RuntimeError("Sheets update failed")
+
+    monkeypatch.setattr(
+        "src.upload_storage.save_upload_file",
+        lambda file_payload, candidate_id: {
+            "sourceUrl": source_url,
+            "mimeType": "application/pdf",
+        },
+    )
+    monkeypatch.setattr(
+        "src.upload_storage.delete_upload_file",
+        lambda stored_source_url: deleted_urls.append(stored_source_url) or True,
+    )
+    context = ApiContext(
+        claims={},
+        payload={
+            "name": "Example",
+            "testDate": "2026-06-24",
+            "file": {"name": "scoresheet.pdf", "mimeType": "application/pdf", "base64": "JVBERi0="},
+        },
+        action="registerCandidate",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-cleanup",
+    )
+
+    with pytest.raises(RuntimeError, match="Sheets update failed"):
+        handle_register_candidate(context, FailingSourceUrlRepo())
+
+    assert deleted_urls == [source_url]
+
+
 def test_attach_scoresheet_with_clean_upload_auto_finalizes(monkeypatch):
     def fake_recognize_upload_file(file_payload):
         return {
@@ -319,7 +360,21 @@ def test_finalize_rejects_empty_raw_cells():
     assert error.value.code == "validation"
 
 
-def test_delete_candidate_removes_candidate_related_rows():
+def test_delete_candidate_removes_candidate_related_rows_and_r2_scoresheets(monkeypatch):
+    cleaned_candidate_ids = []
+    monkeypatch.setattr(
+        "src.candidate_documents.delete_all_candidate_documents",
+        lambda candidate_id: {"deleted": 0, "failed": 0},
+    )
+    monkeypatch.setattr(
+        "src.upload_storage.delete_candidate_scoresheet_uploads",
+        lambda candidate_id: cleaned_candidate_ids.append(candidate_id)
+        or {"deleted": 1, "failed": 0},
+    )
+    repo = FakeRepo()
+    repo.candidate["source_url"] = (
+        "/files/r2/cand-1/11111111-1111-4111-8111-111111111111/cand-1_scoresheet.pdf"
+    )
     context = ApiContext(
         claims={},
         payload={"candidateId": "cand-1", "operationId": "op-delete"},
@@ -329,12 +384,343 @@ def test_delete_candidate_removes_candidate_related_rows():
         operation_id="op-delete",
     )
 
-    response = handle_delete_candidate(context, FakeRepo())
+    response = handle_delete_candidate(context, repo)
 
     assert response["deleted"] is True
     assert response["candidateId"] == "cand-1"
     assert response["candidate"]["candidateId"] == "cand-1"
     assert response["rowsDeleted"]["candidates"] == 1
+    assert response["filesDeleted"] == 1
+    assert response["filesFailed"] == 0
+    assert cleaned_candidate_ids == ["cand-1"]
+
+
+def test_delete_candidate_does_not_fail_when_r2_cleanup_fails(monkeypatch):
+    def fail_cleanup(candidate_id):
+        raise RuntimeError("temporary R2 failure")
+
+    monkeypatch.setattr("src.upload_storage.delete_candidate_scoresheet_uploads", fail_cleanup)
+    monkeypatch.setattr(
+        "src.candidate_documents.delete_all_candidate_documents",
+        lambda candidate_id: {"deleted": 0, "failed": 0},
+    )
+    repo = FakeRepo()
+    repo.candidate["source_url"] = (
+        "/files/r2/cand-1/11111111-1111-4111-8111-111111111111/cand-1_scoresheet.pdf"
+    )
+    context = ApiContext(
+        claims={},
+        payload={"candidateId": "cand-1", "operationId": "op-delete"},
+        action="deleteCandidate",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-delete",
+    )
+
+    response = handle_delete_candidate(context, repo)
+
+    assert response["deleted"] is True
+    assert response["filesDeleted"] == 0
+    assert response["filesFailed"] == 1
+
+
+def test_list_candidate_documents_requires_candidate_and_reads_only_r2(monkeypatch):
+    documents = [
+        {
+            "documentId": "11111111-1111-4111-8111-111111111111",
+            "candidateId": "cand-1",
+            "category": "resume",
+            "filename": "履歴書.pdf",
+        }
+    ]
+    listed_candidate_ids = []
+    monkeypatch.setattr(
+        "src.candidate_documents.list_candidate_documents",
+        lambda candidate_id: listed_candidate_ids.append(candidate_id) or documents,
+    )
+    context = ApiContext(
+        claims={},
+        payload={"candidateId": "cand-1"},
+        action="listCandidateDocuments",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="",
+    )
+
+    response = handle_list_candidate_documents(context, FakeRepo())
+
+    assert response == {"documents": documents}
+    assert listed_candidate_ids == ["cand-1"]
+
+
+def test_upload_candidate_document_does_not_change_candidate_or_ocr_state(monkeypatch):
+    captured = {}
+    document = {
+        "documentId": "11111111-1111-4111-8111-111111111111",
+        "candidateId": "cand-1",
+        "category": "essay",
+        "filename": "作文.pdf",
+    }
+
+    def fake_upload(candidate_id, category, file_payload, uploaded_by, operation_id):
+        captured.update(
+            {
+                "candidate_id": candidate_id,
+                "category": category,
+                "file": file_payload,
+                "uploaded_by": uploaded_by,
+                "operation_id": operation_id,
+            }
+        )
+        return document
+
+    monkeypatch.setattr("src.candidate_documents.upload_candidate_document", fake_upload)
+    repo = FakeRepo()
+    original_candidate = dict(repo.candidate)
+    original_raw_cells = dict(repo.raw_cells)
+    file_payload = {
+        "name": "作文.pdf",
+        "mimeType": "application/pdf",
+        "base64": "JVBERi0xLjcK",
+    }
+    context = ApiContext(
+        claims={},
+        payload={"candidateId": "cand-1", "category": "essay", "file": file_payload},
+        action="uploadCandidateDocument",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="11111111-1111-4111-8111-111111111111",
+    )
+
+    response = handle_upload_candidate_document(context, repo)
+
+    assert response == {"document": document}
+    assert captured == {
+        "candidate_id": "cand-1",
+        "category": "essay",
+        "file": file_payload,
+        "uploaded_by": "operator@example.com",
+        "operation_id": "11111111-1111-4111-8111-111111111111",
+    }
+    assert repo.candidate == original_candidate
+    assert repo.raw_cells == original_raw_cells
+
+
+def test_upload_candidate_document_compensates_when_candidate_is_deleted_during_put(monkeypatch):
+    document_id = "11111111-1111-4111-8111-111111111111"
+    deleted_documents = []
+    monkeypatch.setattr(
+        "src.candidate_documents.upload_candidate_document",
+        lambda candidate_id, category, file_payload, uploaded_by, operation_id: {
+            "documentId": document_id,
+            "candidateId": candidate_id,
+            "category": category,
+            "filename": "履歴書.pdf",
+        },
+    )
+    monkeypatch.setattr(
+        "src.candidate_documents.delete_candidate_document",
+        lambda candidate_id, stored_document_id: deleted_documents.append(
+            (candidate_id, stored_document_id)
+        )
+        or True,
+    )
+
+    class ConcurrentDeleteRepo(FakeRepo):
+        def __init__(self):
+            super().__init__()
+            self.get_candidate_calls = 0
+
+        def get_candidate(self, candidate_id):
+            self.get_candidate_calls += 1
+            return self.candidate if self.get_candidate_calls == 1 else None
+
+    context = ApiContext(
+        claims={},
+        payload={
+            "candidateId": "cand-1",
+            "category": "resume",
+            "file": {
+                "name": "履歴書.pdf",
+                "mimeType": "application/pdf",
+                "base64": "JVBERi0xLjcK",
+            },
+        },
+        action="uploadCandidateDocument",
+        operator="operator@example.com",
+        role="operator",
+        operation_id=document_id,
+    )
+
+    with pytest.raises(Exception) as error:
+        handle_upload_candidate_document(context, ConcurrentDeleteRepo())
+
+    assert error.value.code == "not_found"
+    assert deleted_documents == [("cand-1", document_id)]
+
+
+def test_delete_candidate_document_uses_candidate_id_and_document_id(monkeypatch):
+    calls = []
+    monkeypatch.setattr(
+        "src.candidate_documents.delete_candidate_document",
+        lambda candidate_id, document_id: calls.append((candidate_id, document_id)) or True,
+    )
+    context = ApiContext(
+        claims={},
+        payload={
+            "candidateId": "cand-1",
+            "documentId": "11111111-1111-4111-8111-111111111111",
+        },
+        action="deleteCandidateDocument",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-delete-document",
+    )
+
+    response = handle_delete_candidate_document(context, FakeRepo())
+
+    assert response == {
+        "deleted": True,
+        "candidateId": "cand-1",
+        "documentId": "11111111-1111-4111-8111-111111111111",
+    }
+    assert calls == [("cand-1", "11111111-1111-4111-8111-111111111111")]
+
+
+@pytest.mark.parametrize(
+    ("handler", "action", "payload"),
+    [
+        (handle_list_candidate_documents, "listCandidateDocuments", {"candidateId": "missing"}),
+        (
+            handle_upload_candidate_document,
+            "uploadCandidateDocument",
+            {"candidateId": "missing", "category": "resume", "file": {}},
+        ),
+        (
+            handle_delete_candidate_document,
+            "deleteCandidateDocument",
+            {
+                "candidateId": "missing",
+                "documentId": "11111111-1111-4111-8111-111111111111",
+            },
+        ),
+    ],
+)
+def test_candidate_document_handlers_reject_missing_candidate(handler, action, payload):
+    class MissingCandidateRepo(FakeRepo):
+        def get_candidate(self, candidate_id):
+            return None
+
+    context = ApiContext(
+        claims={},
+        payload=payload,
+        action=action,
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-documents" if action != "listCandidateDocuments" else "",
+    )
+
+    with pytest.raises(Exception) as error:
+        handler(context, MissingCandidateRepo())
+
+    assert error.value.code == "not_found"
+
+
+def test_delete_candidate_cleans_reference_documents_best_effort(monkeypatch):
+    monkeypatch.setattr(
+        "src.upload_storage.delete_candidate_scoresheet_uploads",
+        lambda candidate_id: {"deleted": 1, "failed": 0},
+    )
+    monkeypatch.setattr(
+        "src.candidate_documents.delete_all_candidate_documents",
+        lambda candidate_id: {"deleted": 2, "failed": 1},
+    )
+    repo = FakeRepo()
+    repo.candidate["source_url"] = (
+        "/files/r2/cand-1/11111111-1111-4111-8111-111111111111/cand-1_scoresheet.pdf"
+    )
+    context = ApiContext(
+        claims={},
+        payload={"candidateId": "cand-1"},
+        action="deleteCandidate",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-delete-candidate-documents",
+    )
+
+    response = handle_delete_candidate(context, repo)
+
+    assert response["deleted"] is True
+    assert response["filesDeleted"] == 3
+    assert response["filesFailed"] == 1
+
+
+def test_delete_candidate_cleans_orphaned_scoresheets_without_source_url(monkeypatch):
+    cleaned_candidate_ids = []
+    monkeypatch.setattr(
+        "src.upload_storage.delete_candidate_scoresheet_uploads",
+        lambda candidate_id: cleaned_candidate_ids.append(candidate_id)
+        or {"deleted": 1, "failed": 0},
+    )
+    monkeypatch.setattr(
+        "src.candidate_documents.delete_all_candidate_documents",
+        lambda candidate_id: {"deleted": 0, "failed": 0},
+    )
+    repo = FakeRepo()
+    repo.candidate["source_url"] = ""
+    context = ApiContext(
+        claims={},
+        payload={"candidateId": "cand-1"},
+        action="deleteCandidate",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-delete-orphaned-scoresheet",
+    )
+
+    response = handle_delete_candidate(context, repo)
+
+    assert response["deleted"] is True
+    assert response["filesDeleted"] == 1
+    assert response["filesFailed"] == 0
+    assert cleaned_candidate_ids == ["cand-1"]
+
+
+def test_delete_already_deleted_candidate_retries_scoresheet_and_reference_document_cleanup(
+    monkeypatch,
+):
+    cleaned_scoresheet_candidate_ids = []
+    cleaned_document_candidate_ids = []
+    monkeypatch.setattr(
+        "src.upload_storage.delete_candidate_scoresheet_uploads",
+        lambda candidate_id: cleaned_scoresheet_candidate_ids.append(candidate_id)
+        or {"deleted": 2, "failed": 1},
+    )
+    monkeypatch.setattr(
+        "src.candidate_documents.delete_all_candidate_documents",
+        lambda candidate_id: cleaned_document_candidate_ids.append(candidate_id)
+        or {"deleted": 1, "failed": 0},
+    )
+
+    class AlreadyDeletedRepo(FakeRepo):
+        def get_candidate(self, candidate_id):
+            return None
+
+    context = ApiContext(
+        claims={},
+        payload={"candidateId": "cand-1"},
+        action="deleteCandidate",
+        operator="operator@example.com",
+        role="operator",
+        operation_id="op-retry-delete-candidate-documents",
+    )
+
+    response = handle_delete_candidate(context, AlreadyDeletedRepo())
+
+    assert response["alreadyDeleted"] is True
+    assert response["filesDeleted"] == 3
+    assert response["filesFailed"] == 1
+    assert cleaned_scoresheet_candidate_ids == ["cand-1"]
+    assert cleaned_document_candidate_ids == ["cand-1"]
 
 
 def test_get_cells_returns_candidate_source_url_as_document_link():

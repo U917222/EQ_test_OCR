@@ -6,8 +6,11 @@ export type Action =
   | "getDashboard"
   | "getCells"
   | "getResult"
+  | "listCandidateDocuments"
   | "registerCandidate"
   | "attachScoresheet"
+  | "uploadCandidateDocument"
+  | "deleteCandidateDocument"
   | "updateCandidate"
   | "saveCells"
   | "updateStatus"
@@ -29,8 +32,11 @@ const requiredRoles: Record<Action, Role | null> = {
   getDashboard: "operator",
   getCells: "operator",
   getResult: "operator",
+  listCandidateDocuments: "operator",
   registerCandidate: "operator",
   attachScoresheet: "operator",
+  uploadCandidateDocument: "operator",
+  deleteCandidateDocument: "operator",
   updateCandidate: "operator",
   saveCells: "operator",
   updateStatus: "operator",
@@ -56,6 +62,8 @@ const roleRank: Record<Role, number> = {
 const writeActions = new Set<Action>([
   "registerCandidate",
   "attachScoresheet",
+  "uploadCandidateDocument",
+  "deleteCandidateDocument",
   "updateCandidate",
   "saveCells",
   "updateStatus",

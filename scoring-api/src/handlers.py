@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -23,6 +24,9 @@ from src.repository import (
 from src.wire import ApiContext, ApiError, candidate_id_from_payload
 
 
+LOGGER = logging.getLogger(__name__)
+
+
 def dispatch(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:
     handlers = {
         "me": handle_me,
@@ -32,6 +36,9 @@ def dispatch(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:
         "getResult": handle_get_result,
         "registerCandidate": handle_register_candidate,
         "attachScoresheet": handle_attach_scoresheet,
+        "listCandidateDocuments": handle_list_candidate_documents,
+        "uploadCandidateDocument": handle_upload_candidate_document,
+        "deleteCandidateDocument": handle_delete_candidate_document,
         "updateCandidate": handle_update_candidate,
         "saveCells": handle_save_cells,
         "updateStatus": handle_update_status,
@@ -386,14 +393,24 @@ def process_scoresheet_upload(
     stored_mime_type = str(file_info.get("mimeType") or file_info.get("contentType") or "").split(";")[0].strip().lower()
     if not source_url:
         try:
-            from src.upload_storage import save_upload_file
+            from src.upload_storage import delete_upload_file, save_upload_file
         except ImportError as error:
             raise ApiError("internal", "src.upload_storage.save_upload_file is not available") from error
 
         stored_upload = save_upload_file(file_payload, candidate_id)
         source_url = stored_upload["sourceUrl"]
         stored_mime_type = stored_upload["mimeType"]
-        repo.update_candidate_source_url(candidate_id, source_url)
+        try:
+            repo.update_candidate_source_url(candidate_id, source_url)
+        except Exception:
+            try:
+                delete_upload_file(source_url)
+            except Exception as cleanup_error:
+                LOGGER.warning(
+                    "Failed to clean up upload after source URL update error",
+                    extra={"candidate_id": candidate_id, "cleanup_error": str(cleanup_error)},
+                )
+            raise
         candidate = repo.get_candidate(candidate_id) or candidate
 
     try:
@@ -451,19 +468,161 @@ def handle_delete_candidate(context: ApiContext, repo: ScoringRepository) -> dic
     candidate_id = require_candidate_id(context.payload)
     candidate = repo.get_candidate(candidate_id)
     if not candidate:
+        scoresheets_deleted, scoresheets_failed = _cleanup_candidate_scoresheet_uploads(candidate_id)
+        documents_deleted, documents_failed = _cleanup_candidate_reference_documents(candidate_id)
         return {
             "deleted": True,
             "candidateId": candidate_id,
             "alreadyDeleted": True,
             "rowsDeleted": {},
+            "filesDeleted": scoresheets_deleted + documents_deleted,
+            "filesFailed": scoresheets_failed + documents_failed,
         }
     rows_deleted = repo.delete_candidate(candidate_id)
+    files_deleted, files_failed = _cleanup_candidate_scoresheet_uploads(candidate_id)
+    documents_deleted, documents_failed = _cleanup_candidate_reference_documents(candidate_id)
+    files_deleted += documents_deleted
+    files_failed += documents_failed
     return {
         "deleted": True,
         "candidateId": candidate_id,
         "candidate": api_candidate_from_row(candidate),
         "rowsDeleted": rows_deleted,
+        "filesDeleted": files_deleted,
+        "filesFailed": files_failed,
     }
+
+
+def _cleanup_candidate_reference_documents(candidate_id: str) -> tuple[int, int]:
+    try:
+        from src.candidate_documents import delete_all_candidate_documents
+
+        document_cleanup = delete_all_candidate_documents(candidate_id)
+        return (
+            int(document_cleanup.get("deleted") or 0),
+            int(document_cleanup.get("failed") or 0),
+        )
+    except Exception as cleanup_error:
+        # Reference documents are ancillary. Candidate row deletion remains the
+        # source-of-truth operation even when R2 cleanup is temporarily unavailable.
+        LOGGER.warning(
+            "Failed to clean up candidate reference documents after candidate deletion",
+            extra={"candidate_id": candidate_id, "cleanup_error": str(cleanup_error)},
+        )
+        return 0, 1
+
+
+def _cleanup_candidate_scoresheet_uploads(candidate_id: str) -> tuple[int, int]:
+    try:
+        from src.upload_storage import delete_candidate_scoresheet_uploads
+
+        upload_cleanup = delete_candidate_scoresheet_uploads(candidate_id)
+        return (
+            int(upload_cleanup.get("deleted") or 0),
+            int(upload_cleanup.get("failed") or 0),
+        )
+    except Exception as cleanup_error:
+        LOGGER.warning(
+            "Failed to clean up candidate scoring-sheet uploads after candidate deletion",
+            extra={"candidate_id": candidate_id, "cleanup_error": str(cleanup_error)},
+        )
+        return 0, 1
+
+
+def handle_list_candidate_documents(
+    context: ApiContext, repo: ScoringRepository
+) -> dict[str, Any]:
+    candidate_id = _require_candidate_for_documents(context, repo)
+    from src.candidate_documents import list_candidate_documents
+
+    return {"documents": list_candidate_documents(candidate_id)}
+
+
+def handle_upload_candidate_document(
+    context: ApiContext, repo: ScoringRepository
+) -> dict[str, Any]:
+    candidate_id = _require_candidate_for_documents(context, repo)
+    from src.candidate_documents import (
+        delete_candidate_document,
+        upload_candidate_document,
+    )
+
+    document = upload_candidate_document(
+        candidate_id,
+        str(context.payload.get("category") or ""),
+        context.payload.get("file"),
+        context.operator,
+        context.operation_id,
+    )
+    try:
+        candidate_still_exists = repo.get_candidate(candidate_id)
+    except Exception:
+        _compensate_candidate_document_upload(
+            candidate_id,
+            str(document.get("documentId") or ""),
+            delete_candidate_document,
+        )
+        raise
+    if not candidate_still_exists:
+        _compensate_candidate_document_upload(
+            candidate_id,
+            str(document.get("documentId") or ""),
+            delete_candidate_document,
+        )
+        raise ApiError("not_found", f"Candidate not found after document upload: {candidate_id}")
+    return {"document": document}
+
+
+def _compensate_candidate_document_upload(
+    candidate_id: str,
+    document_id: str,
+    delete_document: Any,
+) -> None:
+    try:
+        deleted = delete_document(candidate_id, document_id)
+        if not deleted:
+            LOGGER.warning(
+                "Candidate document compensation found no uploaded object",
+                extra={"candidate_id": candidate_id, "document_id": document_id},
+            )
+    except Exception as cleanup_error:
+        LOGGER.warning(
+            "Failed to compensate candidate document upload",
+            extra={
+                "candidate_id": candidate_id,
+                "document_id": document_id,
+                "cleanup_error": str(cleanup_error),
+            },
+        )
+
+
+def handle_delete_candidate_document(
+    context: ApiContext, repo: ScoringRepository
+) -> dict[str, Any]:
+    candidate_id = _require_candidate_for_documents(context, repo)
+    document_id = str(context.payload.get("documentId") or "").strip()
+    if not document_id:
+        raise ApiError("validation", "documentId is required")
+    from src.candidate_documents import delete_candidate_document
+
+    if not delete_candidate_document(candidate_id, document_id):
+        raise ApiError("not_found", f"Candidate document not found: {document_id}")
+    return {
+        "deleted": True,
+        "candidateId": candidate_id,
+        "documentId": document_id,
+    }
+
+
+def _require_candidate_for_documents(
+    context: ApiContext, repo: ScoringRepository
+) -> str:
+    candidate_id = candidate_id_from_payload(context.payload)
+    if not candidate_id:
+        raise ApiError("validation", "candidateId is required")
+    if not repo.get_candidate(candidate_id):
+        raise ApiError("not_found", f"Candidate not found: {candidate_id}")
+    return candidate_id
 
 
 def handle_save_decision(context: ApiContext, repo: ScoringRepository) -> dict[str, Any]:

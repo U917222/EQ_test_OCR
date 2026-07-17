@@ -22,10 +22,15 @@ API_AUDIENCES = frozenset({API_AUDIENCE, LEGACY_API_AUDIENCE})
 API_MAX_CLOCK_SKEW_SECONDS = 300
 API_NONCE_TTL_SECONDS = 600
 API_OPERATION_TTL_SECONDS = 30 * 24 * 60 * 60
+API_UUID_PATTERN = re.compile(
+    r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}"
+)
 
 WRITE_ACTIONS = {
     "registerCandidate",
     "attachScoresheet",
+    "uploadCandidateDocument",
+    "deleteCandidateDocument",
     "updateCandidate",
     "saveCells",
     "updateStatus",
@@ -42,6 +47,9 @@ REQUIRED_ROLES = {
     "saveCells": "operator",
     "registerCandidate": "operator",
     "attachScoresheet": "operator",
+    "listCandidateDocuments": "operator",
+    "uploadCandidateDocument": "operator",
+    "deleteCandidateDocument": "operator",
     "updateCandidate": "operator",
     "getResult": "operator",
     "updateStatus": "operator",
@@ -227,6 +235,8 @@ def assert_audience_and_action(
             raise ApiError("unauthorized", "operationId mismatch")
     if action in WRITE_ACTIONS and not operation_id:
         raise ApiError("validation", "operationId is required")
+    if action == "uploadCandidateDocument" and not API_UUID_PATTERN.fullmatch(operation_id):
+        raise ApiError("validation", "uploadCandidateDocument operationId must be a UUID")
     return action, operation_id
 
 

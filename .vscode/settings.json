@@ -1,0 +1,4 @@
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/ocr-api/.venv/bin/python",
+  "python.pythonPath": "${workspaceFolder}/ocr-api/.venv/bin/python"
+}
