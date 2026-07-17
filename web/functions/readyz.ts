@@ -1,6 +1,7 @@
 interface Env {
   SCORING_API_URL?: string;
-  GAS_API_URL?: string;
+  SCORING_API_SECRET?: string;
+  /** Temporary rolling-migration fallback. */
   FUNCTIONS_GAS_SECRET?: string;
 }
 
@@ -8,8 +9,16 @@ const HEALTH_TIMEOUT_MS = 5_000;
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const startedAt = Date.now();
-  const upstreamUrl = context.env.SCORING_API_URL || context.env.GAS_API_URL || "";
-  const upstream = upstreamUrl ? await checkUpstream(upstreamUrl) : { configured: false };
+  const upstreamUrl = context.env.SCORING_API_URL || "";
+  const hasSigningSecret = Boolean(
+    context.env.SCORING_API_SECRET || context.env.FUNCTIONS_GAS_SECRET,
+  );
+  const configValid = Boolean(upstreamUrl) === hasSigningSecret;
+  const upstream = !configValid
+    ? { configured: true, ok: false, error: "incomplete_configuration" }
+    : upstreamUrl
+      ? await checkUpstream(upstreamUrl)
+      : { configured: false };
 
   return new Response(
     JSON.stringify({
@@ -18,7 +27,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       upstream,
       config: {
         hasApiUrl: Boolean(upstreamUrl),
-        hasSigningSecret: Boolean(context.env.FUNCTIONS_GAS_SECRET),
+        hasSigningSecret,
       },
       elapsedMs: Date.now() - startedAt,
     }),

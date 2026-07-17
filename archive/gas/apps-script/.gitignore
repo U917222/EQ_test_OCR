@@ -1,0 +1,4 @@
+.clasp.json
+.clasp.json.*
+.clasp-*.txt
+!.clasp.json.example

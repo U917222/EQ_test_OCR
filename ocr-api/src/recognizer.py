@@ -47,7 +47,7 @@ class RecognitionResult:
     review_images: dict[str, bytes] = field(default_factory=dict)  # 設問キー -> PNGバイト列
 
     def to_recognition_payload(self, image_links: dict[str, str] | None = None) -> dict:
-        """GAS Webhookの recognition オブジェクト形式に変換する。"""
+        """OCR API の recognition オブジェクト形式に変換する。"""
         return {
             "answers": self.answers,
             "confidenceByQuestion": self.confidence_by_question,

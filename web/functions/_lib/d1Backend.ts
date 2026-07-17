@@ -2,14 +2,10 @@ import { HttpError } from "./errors";
 import { isWriteAction, type Action, type Role } from "./roles";
 import { CELL_KEYS, defaultCells, scoreCandidate, type MasterRows } from "./cheqScoring";
 import { exportD1ToSpreadsheetBackup } from "./spreadsheetBackup";
-import { postToGas, readJsonResponse, type GasEnv } from "./gasClient";
-import { createEnvelope } from "./sign";
 
 interface Env {
   CHEQ_DB: D1Database;
   CHEQ_FILES?: R2Bucket;
-  GAS_API_URL?: string;
-  FUNCTIONS_GAS_SECRET?: string;
   PDF_RENDER_URL?: string;
   PDF_RENDER_KEY?: string;
   OCR_API_URL?: string;
@@ -521,7 +517,7 @@ async function getResultPdf(env: Env, candidateId: string) {
   // 200 でも本文が契約(ok:true かつ base64 非空)を満たさない場合は失敗として扱う（空PDFを返さない）。
   const base64 = isRecord(body) && typeof body.base64 === "string" ? body.base64 : "";
   if (!upstream.ok || !isRecord(body) || body.ok !== true || base64 === "") {
-    const message = gasErrorMessage(body) || `PDF出力に失敗しました: HTTP ${upstream.status}`;
+    const message = upstreamErrorMessage(body) || `PDF出力に失敗しました: HTTP ${upstream.status}`;
     throw new HttpError(502, "upstream", message);
   }
   return {
@@ -532,7 +528,6 @@ async function getResultPdf(env: Env, candidateId: string) {
 }
 
 const D1_FILE_MAX_BYTES = 1 * 1024 * 1024;
-const GAS_DRIVE_FILE_MAX_BYTES = 9 * 1024 * 1024;
 const D1_CHUNKED_FILE_MAX_BYTES = 9 * 1024 * 1024;
 const FILE_CHUNK_BASE64_LENGTH = 256 * 1024;
 
@@ -572,9 +567,9 @@ export async function registerCandidate(env: Env, context: Context) {
     .run();
   try {
     storedFile = preparedFile
-      ? await storeCandidateFile(env, candidateId, preparedFile, context.operator, createdAt, context.operationId)
+      ? await storeCandidateFile(env, candidateId, preparedFile, context.operator, createdAt)
       : null;
-    const sourceUrl = storedFile ? storedFile.publicUrl || fileUrl(storedFile.fileId, storedFile.filename) : "";
+    const sourceUrl = storedFile ? fileUrl(storedFile.fileId, storedFile.filename) : "";
     if (sourceUrl) {
       await db.prepare("UPDATE candidates SET source_url = ?, updated_at = ? WHERE candidate_id = ?").bind(sourceUrl, createdAt, candidateId).run();
     }
@@ -789,11 +784,11 @@ async function attachScoresheet(env: Env, context: Context) {
   let mimeType: string;
   let name: string;
   if (preparedFile) {
-    const storedFile = await storeCandidateFile(env, candidateId, preparedFile, context.operator, now, context.operationId);
+    const storedFile = await storeCandidateFile(env, candidateId, preparedFile, context.operator, now);
     bytes = preparedFile.bytes;
     mimeType = preparedFile.contentType;
     name = preparedFile.filename;
-    const sourceUrl = storedFile ? storedFile.publicUrl || fileUrl(storedFile.fileId, storedFile.filename) : "";
+    const sourceUrl = storedFile ? fileUrl(storedFile.fileId, storedFile.filename) : "";
     if (sourceUrl) {
       await db.prepare("UPDATE candidates SET source_url = ?, updated_at = ? WHERE candidate_id = ?").bind(sourceUrl, now, candidateId).run();
       await db
@@ -850,105 +845,6 @@ async function readStoredFileBytes(
   return { bytes: new Uint8Array(await object.arrayBuffer()), contentType, filename };
 }
 
-async function registerCandidateWithGasDrive(
-  env: Env,
-  context: Context,
-  file: PreparedFile,
-  createdAt: string,
-) {
-  if (!env.GAS_API_URL || !env.FUNCTIONS_GAS_SECRET) {
-    throw new HttpError(400, "validation", "このサイズのファイル保存にはGoogle Drive連携が必要です");
-  }
-
-  const envelope = createEnvelope({
-    action: "registerCandidate",
-    operator: context.operator,
-    role: context.role,
-    operationId: context.operationId,
-    payload: context.payload,
-  });
-  const gasResponse = await postToGas(env as GasEnv, envelope);
-  const gasJson = await readJsonResponse(gasResponse);
-  if (!gasResponse.ok || !isRecord(gasJson) || gasJson.ok === false) {
-    const message = gasErrorMessage(gasJson) || `Google Drive保存に失敗しました: HTTP ${gasResponse.status}`;
-    throw new HttpError(502, "upstream", message);
-  }
-
-  const gasCandidate = asRecord(asRecord(gasJson).candidate);
-  const candidateId = String(gasCandidate.candidateId ?? "").trim();
-  if (!candidateId) throw new HttpError(502, "upstream", "Google Drive保存結果にcandidateIdがありません");
-  const sourceUrl = String(gasCandidate.sourceUrl ?? "").trim()
-    || await fetchGasSourceUrl(env, context, candidateId);
-  const db = env.CHEQ_DB;
-
-  await db
-    .prepare(
-      "INSERT INTO candidates (candidate_id, name, test_date, gender, role, postal_code, prefecture, city, address_line, uploaded_at, status, source_url, memo, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-    )
-    .bind(
-      candidateId,
-      normalizeRequiredText(context.payload.name, "name"),
-      normalizeTestDate(context.payload.testDate),
-      normalizeGenderInput(context.payload.gender ?? gasCandidate.gender),
-      normalizeOptionalText(context.payload.role),
-      normalizeOptionalText(context.payload.postalCode),
-      normalizeOptionalText(context.payload.prefecture),
-      normalizeOptionalText(context.payload.city),
-      normalizeOptionalText(context.payload.addressLine),
-      gasCandidate.uploadedAt ?? createdAt,
-      "REVIEW_REQUIRED",
-      sourceUrl,
-      normalizeOptionalText(context.payload.memo),
-      createdAt,
-    )
-    .run();
-
-  await db
-    .prepare(
-      `INSERT INTO candidate_files (
-        file_id, candidate_id, r2_key, filename, content_type, size_bytes,
-        checksum_sha256, uploaded_by, uploaded_at, storage_kind, body_base64
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .bind(
-      crypto.randomUUID(),
-      candidateId,
-      sourceUrl || `google-drive:${candidateId}`,
-      file.filename,
-      file.contentType,
-      file.bytes.byteLength,
-      await sha256Hex(file.bytes),
-      context.operator,
-      createdAt,
-      "google_drive",
-      "",
-    )
-    .run();
-
-  await db
-    .prepare("INSERT INTO raw_cells (candidate_id, cells_json, confidence_avg, unresolved_count, page_index, image_links_json, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-    .bind(candidateId, JSON.stringify(defaultCells()), "", 80, "", sourceUrl ? JSON.stringify(imageLinksForFile(sourceUrl, file.contentType)) : "{}", createdAt)
-    .run();
-  await insertOpenReviews(db, candidateId);
-  const candidate = await getCandidate(db, candidateId);
-  return { candidate: apiCandidate(candidate ?? {}) };
-}
-
-async function fetchGasSourceUrl(env: Env, context: Context, candidateId: string): Promise<string> {
-  if (!env.GAS_API_URL || !env.FUNCTIONS_GAS_SECRET) return "";
-  const envelope = createEnvelope({
-    action: "getResult",
-    operator: context.operator,
-    role: context.role,
-    operationId: null,
-    payload: { candidateId },
-  });
-  const response = await postToGas(env as GasEnv, envelope);
-  if (!response.ok) return "";
-  const body = await readJsonResponse(response);
-  return typeof asRecord(body).sourceUrl === "string" ? String(asRecord(body).sourceUrl) : "";
-}
-
 type StoredFile = {
   fileId: string;
   filename: string;
@@ -956,7 +852,6 @@ type StoredFile = {
   contentType: string;
   size: number;
   checksumSha256: string;
-  publicUrl?: string;
 };
 
 async function storeCandidateFile(
@@ -965,44 +860,10 @@ async function storeCandidateFile(
   file: PreparedFile,
   actor: string,
   createdAt: string,
-  operationId: string | null,
 ): Promise<StoredFile | null> {
   const db = env.CHEQ_DB;
   const fileId = crypto.randomUUID();
   const checksumSha256 = await sha256Hex(file.bytes);
-  if (shouldUseGasDrive(env, file)) {
-    const sourceUrl = await saveFileToGasDrive(env, candidateId, file, actor, operationId);
-    await db
-      .prepare(
-        `INSERT INTO candidate_files (
-          file_id, candidate_id, r2_key, filename, content_type, size_bytes,
-          checksum_sha256, uploaded_by, uploaded_at, storage_kind, body_base64
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        fileId,
-        candidateId,
-        sourceUrl,
-        file.filename,
-        file.contentType,
-        file.bytes.byteLength,
-        checksumSha256,
-        actor,
-        createdAt,
-        "google_drive",
-        "",
-      )
-      .run();
-    return {
-      fileId,
-      filename: file.filename,
-      r2Key: sourceUrl,
-      contentType: file.contentType,
-      size: file.bytes.byteLength,
-      checksumSha256,
-      publicUrl: sourceUrl,
-    };
-  }
   const r2Key = env.CHEQ_FILES
     ? `candidates/${candidateId}/${fileId}/${file.filename}`
     : `d1/${candidateId}/${fileId}/${file.filename}`;
@@ -1053,42 +914,6 @@ async function storeCandidateFile(
     size: file.bytes.byteLength,
     checksumSha256,
   };
-}
-
-async function saveFileToGasDrive(
-  env: Env,
-  candidateId: string,
-  file: PreparedFile,
-  actor: string,
-  operationId: string | null,
-): Promise<string> {
-  if (!env.GAS_API_URL || !env.FUNCTIONS_GAS_SECRET) {
-    throw new HttpError(400, "validation", "Google Drive連携が設定されていません");
-  }
-  const envelope = createEnvelope({
-    action: "saveCandidateFile",
-    operator: actor,
-    role: "operator",
-    operationId: `${operationId ?? candidateId}:drive-file`,
-    payload: {
-      candidateId,
-      file: {
-        name: file.filename,
-        mimeType: file.contentType,
-        size: file.bytes.byteLength,
-        base64: bytesToBase64(file.bytes),
-      },
-    },
-  });
-  const response = await postToGas(env as GasEnv, envelope);
-  const body = await readJsonResponse(response);
-  if (!response.ok || !isRecord(body) || body.ok === false) {
-    const message = gasErrorMessage(body) || `Google Drive保存に失敗しました: HTTP ${response.status}`;
-    throw new HttpError(502, "upstream", message);
-  }
-  const sourceUrl = String(asRecord(body).sourceUrl ?? "").trim();
-  if (!sourceUrl) throw new HttpError(502, "upstream", "Google Drive保存結果にURLがありません");
-  return sourceUrl;
 }
 
 async function insertFileChunks(db: D1Database, fileId: string, bodyBase64: string) {
@@ -1737,17 +1562,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function uploadMaxBytes(env: Env): number {
   if (env.CHEQ_FILES) return 15 * 1024 * 1024;
-  if (env.GAS_API_URL && env.FUNCTIONS_GAS_SECRET) return GAS_DRIVE_FILE_MAX_BYTES;
   return D1_CHUNKED_FILE_MAX_BYTES;
 }
 
-function shouldUseGasDrive(env: Env, file: PreparedFile): boolean {
-  return !env.CHEQ_FILES
-    && Boolean(env.GAS_API_URL && env.FUNCTIONS_GAS_SECRET)
-    && file.bytes.byteLength <= GAS_DRIVE_FILE_MAX_BYTES;
-}
-
-function gasErrorMessage(value: unknown): string {
+function upstreamErrorMessage(value: unknown): string {
   const record = asRecord(value);
   const error = record.error;
   if (typeof error === "string") return error;

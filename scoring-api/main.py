@@ -85,7 +85,7 @@ async def _handle_render_pdf(request: Request) -> JSONResponse:
 
     Deliberately avoids verify_context / nonce / idempotency and any Sheets or repository
     access so it works on a D1-only deployment that has no Sheets configured. Auth is a
-    dedicated PDF_RENDER_KEY bearer token (NOT FUNCTIONS_GAS_SECRET).
+    dedicated PDF_RENDER_KEY bearer token (not SCORING_API_SECRET).
     """
     render_key = os.environ.get("PDF_RENDER_KEY", "").strip()
     if not render_key:

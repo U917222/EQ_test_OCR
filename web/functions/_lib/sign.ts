@@ -1,11 +1,11 @@
 import { HttpError } from "./errors";
 import type { Action, Role } from "./roles";
 
-export type EnvelopeAction = Action | "saveCandidateFile";
+export type EnvelopeAction = Action;
 
 export interface EnvelopeClaims {
   iss: "cf-functions";
-  aud: "gas-api";
+  aud: "scoring-api";
   action: EnvelopeAction;
   operator: string;
   role: Role | "unknown";
@@ -34,7 +34,7 @@ export function createEnvelope(input: EnvelopeInput): Envelope {
   return {
     claims: {
       iss: "cf-functions",
-      aud: "gas-api",
+      aud: "scoring-api",
       action: input.action,
       operator: input.operator,
       role: input.role,
@@ -48,7 +48,7 @@ export function createEnvelope(input: EnvelopeInput): Envelope {
 
 export async function signEnvelope(envelope: Envelope, secret: string): Promise<string> {
   if (!secret) {
-    throw new HttpError(500, "internal", "Missing FUNCTIONS_GAS_SECRET");
+    throw new HttpError(500, "internal", "Missing SCORING_API_SECRET");
   }
 
   const signingInput = `${canonicalJson(envelope.claims)}.${canonicalJson(envelope.payload)}`;

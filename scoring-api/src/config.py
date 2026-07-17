@@ -15,14 +15,18 @@ def env_flag(name: str) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    functions_gas_secret: str
+    scoring_api_secret: str
     scoring_spreadsheet_id: str
     allow_insecure_dev_auth: bool
 
     @classmethod
     def from_env(cls) -> "Settings":
         return cls(
-            functions_gas_secret=os.environ.get("FUNCTIONS_GAS_SECRET", ""),
+            # Temporary fallback keeps rolling deployments compatible with the old name.
+            scoring_api_secret=(
+                os.environ.get("SCORING_API_SECRET")
+                or os.environ.get("FUNCTIONS_GAS_SECRET", "")
+            ),
             scoring_spreadsheet_id=os.environ.get(
                 "SCORING_SPREADSHEET_ID", DEFAULT_SPREADSHEET_ID
             ),

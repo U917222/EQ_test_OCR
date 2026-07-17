@@ -2,7 +2,7 @@
   "name": "cheq-scoring-core",
   "version": "0.1.0",
   "private": true,
-  "description": "CHEQ採点表(page.5) 採点コア（純粋関数）。GASへは clasp/コピーで配布し、node:test でローカル検証する。",
+  "description": "CHEQ採点表(page.5)の採点コア。node:testで回帰検証する。",
   "type": "commonjs",
   "scripts": {
     "test": "node --test"

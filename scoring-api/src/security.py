@@ -36,7 +36,7 @@ def verify_context(
     timestamp = request_param(headers, query, "X-Timestamp")
     nonce = request_param(headers, query, "X-Nonce")
     if not settings.allow_insecure_dev_auth:
-        verify_signature(claims, payload, settings.functions_gas_secret, signature)
+        verify_signature(claims, payload, settings.scoring_api_secret, signature)
         assert_timestamp(claims, timestamp)
         assert_nonce_unused(repo, claims, nonce)
     action, operation_id = assert_audience_and_action(

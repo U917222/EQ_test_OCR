@@ -15,7 +15,10 @@ from typing import Any, Mapping
 
 
 API_SIGNATURE_PREFIX = "sha256="
-API_AUDIENCE = "gas-api"
+API_AUDIENCE = "scoring-api"
+# Temporary compatibility for Pages deployments created before the service rename.
+LEGACY_API_AUDIENCE = "gas-api"
+API_AUDIENCES = frozenset({API_AUDIENCE, LEGACY_API_AUDIENCE})
 API_MAX_CLOCK_SKEW_SECONDS = 300
 API_NONCE_TTL_SECONDS = 600
 API_OPERATION_TTL_SECONDS = 30 * 24 * 60 * 60
@@ -155,7 +158,7 @@ def verify_signature(
     received_signature: str,
 ) -> None:
     if not secret:
-        raise ApiError("unauthorized", "FUNCTIONS_GAS_SECRET is not configured")
+        raise ApiError("unauthorized", "SCORING_API_SECRET is not configured")
     if not received_signature:
         raise ApiError("unauthorized", "Missing signature")
     expected = sign_envelope(claims, payload, secret)
@@ -209,7 +212,7 @@ def assert_timestamp(claims: Mapping[str, Any], request_ts: str, now: int | None
 def assert_audience_and_action(
     claims: Mapping[str, Any], payload: Mapping[str, Any], route_action: str
 ) -> tuple[str, str]:
-    if str(claims.get("aud") or "") != API_AUDIENCE:
+    if str(claims.get("aud") or "") not in API_AUDIENCES:
         raise ApiError("unauthorized", "Invalid audience")
     action = str(claims.get("action") or "").strip()
     if not action or action not in REQUIRED_ROLES:

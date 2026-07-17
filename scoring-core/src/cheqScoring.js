@@ -8,8 +8,8 @@
  *   - 値: 0〜3 の整数。判定不能は null + reason
  *   - 行キー: A1〜J1(上ブロック) / A2〜J2(下ブロック)
  *
- * 本番(GAS)ではマスタ(itemMaster/bands)をシートから読んで渡す。
- * このファイルの DEFAULT_ITEM_MASTER / DEFAULT_BANDS はローカルテストとシード用。
+ * 本番ではマスタ(itemMaster/bands)を保存層から読んで渡す。
+ * DEFAULT_ITEM_MASTER / DEFAULT_BANDS はローカルテストとシード用。
  */
 
 var CHEQ_LETTERS = "ABCDEFGHIJ";
@@ -229,7 +229,7 @@ function buildBandsFromRows(rows) {
 
 /**
  * マスタの整合性を検証し、問題の説明文の配列を返す（空配列=OK）。
- * GAS側は採点前にこれを呼び、エラーがあれば採点を拒否する。
+ * 呼び出し側は採点前にこれを実行し、エラーがあれば採点を拒否する。
  */
 function validateMasters(itemMaster, bands) {
   var errors = [];
@@ -477,23 +477,20 @@ var DEFAULT_BANDS = {
   ],
 };
 
-// GAS にそのまま貼っても動くよう、module が在る環境でのみ export する。
-if (typeof module !== "undefined" && module.exports) {
-  module.exports = {
-    cellKey: cellKey,
-    rowKey: rowKey,
-    computeRowScores: computeRowScores,
-    computeItemTotals: computeItemTotals,
-    computeStages: computeStages,
-    minusPointsForAttitudeStage: minusPointsForAttitudeStage,
-    minusPointsForJobRequirements: minusPointsForJobRequirements,
-    jobRequirementLowStageItems: jobRequirementLowStageItems,
-    crossCheck: crossCheck,
-    scoreSheet: scoreSheet,
-    buildItemMasterFromRows: buildItemMasterFromRows,
-    buildBandsFromRows: buildBandsFromRows,
-    validateMasters: validateMasters,
-    DEFAULT_ITEM_MASTER: DEFAULT_ITEM_MASTER,
-    DEFAULT_BANDS: DEFAULT_BANDS,
-  };
-}
+module.exports = {
+  cellKey: cellKey,
+  rowKey: rowKey,
+  computeRowScores: computeRowScores,
+  computeItemTotals: computeItemTotals,
+  computeStages: computeStages,
+  minusPointsForAttitudeStage: minusPointsForAttitudeStage,
+  minusPointsForJobRequirements: minusPointsForJobRequirements,
+  jobRequirementLowStageItems: jobRequirementLowStageItems,
+  crossCheck: crossCheck,
+  scoreSheet: scoreSheet,
+  buildItemMasterFromRows: buildItemMasterFromRows,
+  buildBandsFromRows: buildBandsFromRows,
+  validateMasters: validateMasters,
+  DEFAULT_ITEM_MASTER: DEFAULT_ITEM_MASTER,
+  DEFAULT_BANDS: DEFAULT_BANDS,
+};
