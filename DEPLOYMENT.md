@@ -21,9 +21,11 @@
 
 ---
 
-## 採点用紙をGoogle DriveからR2へ切り替える
+## R2バケットの初期セットアップ
 
-この切り替えではGoogle Sheetsとscoring-apiを維持し、採点用紙原本だけをR2へ移します。既存のDriveファイルは移動・削除しません。プロジェクト方針どおり、本番操作はPMが実施します。
+採点用紙原本と参考資料（履歴書・作文・その他PDF）は、Pages Functionsが `CHEQ_FILES` bindingを通じて直接R2へ保存します。保存先は **bindingの有無だけ** で自動的に決まり（ある場合はR2、無い場合はD1またはD1チャンク）、切り替え用の環境変数やscoring-api側の設定はありません。scoring-apiはPDF生成専用で、ストレージには一切関与しません。
+
+本番のバケットはセットアップ済みです。以下は新しい環境（別アカウント等）を構築する場合にのみ必要な手順です。
 
 ### 1. R2を有効化して非公開バケットを作る
 
@@ -38,19 +40,7 @@ pnpm exec wrangler r2 bucket info cheq-eqtest-files
 
 `web/wrangler.toml` の `CHEQ_FILES` bindingはこのバケット名を参照します。バケット作成前にPagesをデプロイするとbinding解決で失敗するため、必ず先に作成してください。
 
-### 2. Cloud Run専用のR2トークンを作る
-
-Cloudflare DashboardのR2 API Tokensから次の条件で作成します。
-
-- 権限: Object Read & Write
-- 対象: `cheq-eqtest-files` のみ
-- Admin権限: なし
-
-表示されるAccess Key IDとSecret Access Keyは再表示できないため、それぞれGoogle Secret Managerの `cheq-r2-access-key-id` と `cheq-r2-secret-access-key` に保存します。値をリポジトリ、`.env`、コマンド履歴へ直接書かないでください。
-
-### 3. Pagesを先にデプロイする
-
-R2の既存URLを認証付きで配信できるよう、scoring-apiの保存先を変える前にPagesをデプロイします。
+### 2. Pagesをデプロイする
 
 ```bash
 cd web
@@ -61,31 +51,7 @@ pnpm run deploy
 
 Cloudflare DashboardのPages projectで、ProductionのR2 binding `CHEQ_FILES` が `cheq-eqtest-files` を指していることを確認します。
 
-### 4. scoring-apiへR2設定を追加する（まだDriveのまま）
-
-`<CLOUDFLARE_ACCOUNT_ID>` とSecret Managerのversion番号（例では `1`）を実値に置き換えます。
-
-```bash
-gcloud run services update scoring-api \
-  --region asia-northeast1 \
-  --update-env-vars SCORING_UPLOAD_BACKEND=drive,R2_ACCOUNT_ID=<CLOUDFLARE_ACCOUNT_ID>,R2_BUCKET_NAME=cheq-eqtest-files \
-  --update-secrets R2_ACCESS_KEY_ID=cheq-r2-access-key-id:1,R2_SECRET_ACCESS_KEY=cheq-r2-secret-access-key:1
-```
-
-続いてR2対応コードをデプロイします。この時点では `drive` のため、保存先は変わりません。
-
-```bash
-make -C scoring-api test
-make -C scoring-api deploy
-```
-
-### 5. R2へ切り替えてスモークテストする
-
-```bash
-gcloud run services update scoring-api \
-  --region asia-northeast1 \
-  --update-env-vars SCORING_UPLOAD_BACKEND=r2
-```
+### 3. スモークテスト
 
 管理画面で小さなテストPDFを1件登録し、次を順に確認します。
 
@@ -93,21 +59,12 @@ gcloud run services update scoring-api \
 2. ログイン中の管理画面から原本を開ける。
 3. 未認証ブラウザでは原本を開けない。
 4. 候補者を削除すると、R2 Dashboardから該当 `candidates/<candidateId>/...` objectも消える。
-5. 既存候補者のGoogle Drive原本も引き続き開ける。
-6. 候補者詳細の「参考資料」でPDFを追加し、一覧・プレビュー・削除ができる。
-7. 参考資料の追加前後で候補者の採点ステータスが変わらない。
+5. 候補者詳細の「参考資料」でPDFを追加し、一覧・プレビュー・削除ができる。
+6. 参考資料の追加前後で候補者の採点ステータスが変わらない。
 
-### エラー時の即時ロールバック
+### R2を使わない場合
 
-保存先だけをDriveへ戻します。コードやR2 bindingは残すことで、切り替え中に作成済みのR2 URLは引き続き閲覧できます。
-
-```bash
-gcloud run services update scoring-api \
-  --region asia-northeast1 \
-  --update-env-vars SCORING_UPLOAD_BACKEND=drive
-```
-
-その後、小さなPDFを再登録してGoogle Drive URLになることを確認します。R2内の既存objectは、参照状況を確認するまで一括削除しないでください。
+`web/wrangler.toml` の `[[r2_buckets]]` ブロックを削除して再デプロイすると、保存先はD1（またはD1チャンク）に切り替わります。既存のR2オブジェクトは削除されないため、参照状況を確認するまで手動で消さないでください。
 
 ## 各コンポーネント別デプロイ
 
@@ -228,9 +185,9 @@ gcloud auth application-default login
 デプロイ権限（Compute Engine → Service Account の権限）を確認してください。
 
 ### D1 マイグレーションが適用されない
-実行済みマイグレーション一覧を確認:
+実行済みマイグレーション一覧を確認（`wrangler d1 migrations list` でも同等の情報が見られます）:
 ```bash
-wrangler d1 query CHEQ_DB "SELECT name FROM _cf_metadata ORDER BY name;"
+wrangler d1 execute CHEQ_DB --remote --command "SELECT name, applied_at FROM d1_migrations ORDER BY name;"
 ```
 
 ---
@@ -257,8 +214,10 @@ PagesとCloud Runで共有する鍵は、必要な組み合わせで同じ値を
 各デプロイ後、本番環境で動作確認:
 
 1. **Web**: https://cheq-eqtest.pages.dev（ダッシュボード・候補者一覧が高速＆D1表示）
-2. **scoring-api**: `curl https://scoring-api-*.run.app/readyz` → 200 OK
-3. **ocr-api**: `curl https://ocr-api-*.run.app/readyz` または `/healthz` → 200 OK
+2. **scoring-api**: `curl https://scoring-api-170627264528.asia-northeast1.run.app/readyz` → 200 OK
+3. **ocr-api**: `curl https://ocr-api-170627264528.asia-northeast1.run.app/readyz` または `/healthz` → 200 OK
+
+実際のURLは `gcloud run services list --region asia-northeast1 --format="table(SERVICE,URL)"` でも確認できます。
 
 ---
 

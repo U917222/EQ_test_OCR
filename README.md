@@ -307,7 +307,7 @@ pnpm test
 
 | Doc | 内容 |
 | --- | --- |
-| [DEPLOYMENT.md](DEPLOYMENT.md) | 各コンポーネントのデプロイ手順、D1 migration、R2切り替え手順、秘密値管理 |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | 各コンポーネントのデプロイ手順、D1 migration、R2初期セットアップ、秘密値管理 |
 | [SECURITY.md](SECURITY.md) | 秘密情報の扱い、脆弱性報告方法、公開データのルール |
 | [scoring-api/README.md](scoring-api/README.md) | Cloud Run scoring-apiのAPI仕様・環境変数 |
 | [ocr-api/README.md](ocr-api/README.md) | 同期OCR APIの仕様・環境変数 |
