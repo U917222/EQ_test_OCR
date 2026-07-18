@@ -6,13 +6,7 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",
     "uvicorn[standard]>=0.34",
-    "google-auth>=2.38",
-    "google-api-python-client>=2.160",
     "weasyprint>=63.0",
-    "opencv-python-headless>=4.13.0.92",
-    "numpy>=2.5.0",
-    "pypdfium2>=5.10.1",
-    "boto3>=1.43.50",
 ]
 
 [tool.uv]

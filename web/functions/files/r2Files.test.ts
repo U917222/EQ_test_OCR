@@ -11,9 +11,9 @@ const fileId = "11111111-1111-4111-8111-111111111111";
 function createContext(
   path: string[],
   bucket?: { get: ReturnType<typeof vi.fn> },
-  options: { active?: boolean; candidateExists?: boolean; role?: string; scoringApi?: boolean } = {},
+  options: { active?: boolean; candidateExists?: boolean; role?: string } = {},
 ) {
-  const { active = true, candidateExists = true, role = "operator", scoringApi = false } = options;
+  const { active = true, candidateExists = true, role = "operator" } = options;
   const db = {
     prepare: vi.fn((sql: string) => ({
       bind: vi.fn((...args: unknown[]) => ({
@@ -36,10 +36,6 @@ function createContext(
       CF_ACCESS_AUD: "audience",
       CHEQ_DB: db,
       CHEQ_FILES: bucket,
-      ...(scoringApi ? {
-        SCORING_API_URL: "https://scoring.example.test/api",
-        SCORING_API_SECRET: "test-secret",
-      } : {}),
     },
     params: { path },
   } as unknown as Parameters<typeof onRequestGet>[0];
@@ -124,30 +120,6 @@ describe("authenticated scoring-api R2 files", () => {
 
     expect(response.status).toBe(404);
     expect(bucket.get).not.toHaveBeenCalled();
-  });
-
-  it("still uses the local D1 authorization check when the upstream backend is configured (D1 is authoritative)", async () => {
-    const bucket = createBucket();
-    const upstreamFetch = vi.fn(async () => new Response(JSON.stringify({
-      ok: false,
-      error: { code: "forbidden", message: "User is not active" },
-    }), {
-      status: 403,
-      headers: { "Content-Type": "application/json" },
-    }));
-    vi.stubGlobal("fetch", upstreamFetch);
-    const context = createContext(
-      ["r2", "cand-1", "documents", "resume", fileId, "resume.pdf"],
-      bucket,
-      { scoringApi: true },
-    );
-
-    const response = await onRequestGet(context);
-
-    expect(response.status).toBe(200);
-    expect(upstreamFetch).not.toHaveBeenCalled();
-    expect(context.env.CHEQ_DB.prepare).toHaveBeenCalledWith(expect.stringContaining("FROM users"));
-    expect(context.env.CHEQ_DB.prepare).toHaveBeenCalledWith(expect.stringContaining("FROM candidates"));
   });
 
   it("rejects path traversal before accessing R2", async () => {

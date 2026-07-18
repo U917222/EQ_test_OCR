@@ -1,10 +1,5 @@
 import { verifyAccessJwt } from "../_lib/accessJwt";
 import { errorResponse, HttpError, responseFromError } from "../_lib/errors";
-import {
-  assertScoringApiConfig,
-  canDispatchScoringApi,
-  dispatchScoringApi,
-} from "../_lib/scoringApiBackend";
 
 interface Env {
   CF_ACCESS_TEAM_DOMAIN: string;
@@ -13,10 +8,6 @@ interface Env {
   ALLOW_INSECURE_DEV_AUTH?: string;
   CHEQ_DB: D1Database;
   CHEQ_FILES?: R2Bucket;
-  SCORING_API_URL?: string;
-  SCORING_API_SECRET?: string;
-  /** Temporary rolling-migration fallback. */
-  FUNCTIONS_GAS_SECRET?: string;
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
@@ -161,12 +152,6 @@ async function candidateFileAccessRejection(
   email: string,
   candidateId: string,
 ): Promise<Response | null> {
-  assertScoringApiConfig(env);
-  if (canDispatchScoringApi(env, "getResult")) {
-    const response = await dispatchScoringApi(env, "getResult", email, { candidateId });
-    return response.ok ? null : response;
-  }
-
   if (!env.CHEQ_DB) throw new HttpError(500, "internal", "Missing CHEQ_DB binding");
   const normalizedEmail = email.trim().toLowerCase();
   const user = await env.CHEQ_DB

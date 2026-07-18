@@ -7,7 +7,8 @@ Never commit production secrets, real `.clasp.json` files, local `.env` files, s
 Required production secrets should be configured outside Git:
 
 - `RECOGNITION_API_KEY`
-- `SCORING_API_SECRET`
+- `PDF_RENDER_KEY`
+- `APP_ACCESS_PASSWORD`
 - Google Cloud service-account credentials, when not provided by the runtime
 
 Prefer Google Secret Manager or equivalent managed secret storage for deployments.

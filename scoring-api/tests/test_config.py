@@ -1,15 +1,17 @@
-from src.config import Settings
+import pytest
+
+from src.config import env_flag
 
 
-def test_scoring_api_secret_prefers_new_name(monkeypatch):
-    monkeypatch.setenv("SCORING_API_SECRET", "new-secret")
-    monkeypatch.setenv("FUNCTIONS_GAS_SECRET", "legacy-secret")
+@pytest.mark.parametrize("value", ["1", "true", "TRUE", "yes", "on", " On "])
+def test_env_flag_accepts_enabled_values(monkeypatch, value):
+    monkeypatch.setenv("FEATURE_FLAG", value)
 
-    assert Settings.from_env().scoring_api_secret == "new-secret"
+    assert env_flag("FEATURE_FLAG") is True
 
 
-def test_scoring_api_secret_falls_back_to_legacy_name(monkeypatch):
-    monkeypatch.delenv("SCORING_API_SECRET", raising=False)
-    monkeypatch.setenv("FUNCTIONS_GAS_SECRET", "legacy-secret")
+@pytest.mark.parametrize("value", ["", "0", "false", "no", "disabled"])
+def test_env_flag_rejects_disabled_values(monkeypatch, value):
+    monkeypatch.setenv("FEATURE_FLAG", value)
 
-    assert Settings.from_env().scoring_api_secret == "legacy-secret"
+    assert env_flag("FEATURE_FLAG") is False

@@ -237,9 +237,7 @@ wrangler d1 query CHEQ_DB "SELECT name FROM _cf_metadata ORDER BY name;"
 
 ## 秘密値管理
 
-Pagesとscoring-apiには、同じ `SCORING_API_SECRET` を設定します。`SCORING_API_URL` だけを設定した状態では、誤ってD1へフォールバックしないようAPIがfail-closedします。
-
-旧 `FUNCTIONS_GAS_SECRET` から移行する場合は、先にscoring-api、次にPagesの順でデプロイします。移行期間中のみ旧環境変数名と旧audience `gas-api` に互換性があります。両環境で `SCORING_API_SECRET` の設定と動作確認が完了したら、旧secretを削除します。
+PDF生成を使用する場合、Pagesとscoring-apiには同じ `PDF_RENDER_KEY` を設定し、Pagesに `PDF_RENDER_URL` を設定します。
 
 ### 新しい秘密値を追加
 ```bash
@@ -250,7 +248,7 @@ gcloud run deploy <service> --update-env-vars KEY=value --region asia-northeast1
 wrangler pages secret put KEY
 ```
 
-両側で**同じ値**を設定してください。不一致すると認証失敗（401/403）になります。
+PagesとCloud Runで共有する鍵は、必要な組み合わせで同じ値を設定してください。
 
 ---
 

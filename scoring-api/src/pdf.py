@@ -1,10 +1,27 @@
 from __future__ import annotations
 
+import base64
 from datetime import datetime
 from html import escape
 import math
 import re
 from typing import Any
+
+
+def build_pdf_response(
+    candidate: dict[str, Any],
+    result: dict[str, Any],
+    raw_cell_summary: dict[str, Any] | None,
+    fallback_name: str = "",
+) -> dict[str, Any]:
+    """Render and package a result PDF for the render endpoint."""
+    pdf_bytes = build_result_pdf(candidate or {}, result or {}, raw_cell_summary)
+    name = (candidate.get("name") if isinstance(candidate, dict) else "") or fallback_name or "result"
+    return {
+        "filename": f"CHEQ_{name}.pdf",
+        "mimeType": "application/pdf",
+        "base64": base64.b64encode(pdf_bytes).decode("ascii"),
+    }
 
 
 def build_result_pdf(candidate: dict, result: dict, raw_cell_summary: dict | None) -> bytes:

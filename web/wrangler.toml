@@ -14,14 +14,9 @@ migrations_dir = "./migrations"
 binding = "CHEQ_FILES"
 bucket_name = "cheq-eqtest-files"
 
-# Cloud Run の scoring-api(/api) へ委譲するためのカットオーバー設定。
-# 秘密値の SCORING_API_SECRET はここに置かず Pages secret として設定する。
-#
 # OCR(採点表の数字読取)を有効にする場合は OCR_API_URL を設定する。未設定なら OCR はスキップされ
-# 全セル手入力になる。OCR_API_KEY は専用 Bearer トークンで Pages secret として設定する
-# (SCORING_API_SECRET とは別物。使い回さないこと)。
+# 全セル手入力になる。OCR_API_KEY は専用 Bearer トークンで Pages secret として設定する。
 # OCR_API_URL = "https://ocr-api-xxxxxxxx-an.a.run.app/recognize-sync"  (OCR_API_KEY is a Pages secret)
 [vars]
-SCORING_API_URL = "https://scoring-api-q4drl4qqmq-an.a.run.app/api"
 # 結果PDFは D1 経路から Cloud Run の専用 /render-pdf(Bearer 認証)へ委譲する。
 # PDF_RENDER_URL = "https://scoring-api-q4drl4qqmq-an.a.run.app/render-pdf"  (PDF_RENDER_KEY is a Pages secret)

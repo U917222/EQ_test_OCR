@@ -1,11 +1,6 @@
 import { verifyAccessJwt } from "../_lib/accessJwt";
 import { errorResponse, HttpError, responseFromError } from "../_lib/errors";
 import { dispatchD1 } from "../_lib/d1Backend";
-import {
-  assertScoringApiConfig,
-  canDispatchScoringApi,
-  dispatchScoringApi,
-} from "../_lib/scoringApiBackend";
 import { isAction, isWriteAction, type Action } from "../_lib/roles";
 
 interface Env {
@@ -15,10 +10,6 @@ interface Env {
   ALLOW_INSECURE_DEV_AUTH?: string;
   CHEQ_DB: D1Database;
   CHEQ_FILES?: R2Bucket;
-  SCORING_API_URL?: string;
-  SCORING_API_SECRET?: string;
-  /** Temporary rolling-migration fallback. */
-  FUNCTIONS_GAS_SECRET?: string;
   PDF_RENDER_URL?: string;
   PDF_RENDER_KEY?: string;
   OCR_API_URL?: string;
@@ -34,10 +25,6 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const body = await readJsonBody(context.request);
     const { email } = await verifyAccessJwt(context.request, context.env);
     getOperationId(action, body);
-    assertScoringApiConfig(context.env);
-    if (canDispatchScoringApi(context.env, action)) {
-      return dispatchScoringApi(context.env, action, email, body);
-    }
     const waitUntil = typeof context.waitUntil === "function" ? context.waitUntil.bind(context) : undefined;
     return dispatchD1(context.env, action, email, body, waitUntil);
   } catch (error) {
