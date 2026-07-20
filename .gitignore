@@ -2,13 +2,40 @@
 
 # Local agent/tool state
 .claude/
+.codex/
+.agents/
+.cursor/
+.playwright-cli/
 .wrangler/
+.idea/
+.fleet/
+.history/
+*.swp
+*.swo
+*~
 
 # Local environment and secrets
 .env
 .env.*
 !.env.example
+!.env.*.example
+.dev.vars
+.dev.vars.*
+!.dev.vars.example
 *.local
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+service-account*.json
+service_account*.json
+!credentials*.example.json
+!service-account*.example.json
+!service_account*.example.json
+*.sqlite
+*.sqlite3
+*.db
 
 # Python
 .venv/
@@ -18,6 +45,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
+.hypothesis/
+.tox/
+.nox/
 .coverage
 coverage.xml
 htmlcov/
@@ -29,9 +59,14 @@ build/
 coverage/
 .turbo/
 .next/
+.vite/
+.cache/
 
 # Apps Script / clasp
-gas/.clasp*
+.clasp.json
+.clasp.json.*
+.clasp-newproject.txt
+!.clasp.json.example
 
 # Local image fixtures and private scans
 *.HEIC
@@ -44,6 +79,7 @@ gas/.clasp*
 
 # Generated review/output files
 out/
+output/
 tmp/
 *.log
 plans/
