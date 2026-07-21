@@ -41,7 +41,10 @@ export async function verifyAccessJwt(
 ): Promise<VerifiedAccessJwt> {
   const sharedPassword = env.APP_ACCESS_PASSWORD?.trim();
   if (sharedPassword && (await sharedPasswordMatches(request, sharedPassword))) {
-    const email = env.APP_ACCESS_EMAIL?.trim() || env.MVP_OPERATOR_EMAIL?.trim() || "operator@example.com";
+    const email = env.APP_ACCESS_EMAIL?.trim() || env.MVP_OPERATOR_EMAIL?.trim();
+    if (!email) {
+      throw new HttpError(500, "internal", "Missing APP_ACCESS_EMAIL or MVP_OPERATOR_EMAIL");
+    }
     return { email, claims: { email, auth: "shared-password" } };
   }
 
